@@ -1,0 +1,131 @@
+// convex/agents/shippingAgent.ts - AI Agent for ShipEngine Label Purchase (Organization Metadata)
+
+import { v } from "convex/values";
+
+import { internal } from "../_generated/api";
+import { internalAction } from "../_generated/server";
+
+// Buy shipping label using owner's ShipEngine API key from Organization Metadata
+export const buyLabel = internalAction({
+  args: {
+    orderId: v.id("orders"),
+    orgId: v.id("organizations"),
+  },
+  handler: async (ctx, args) => {
+    try {
+      // Get order details
+      const order = await ctx.runQuery(internal.orders.get, { orderId: args.orderId });
+      if (!order) throw new Error("Order not found");
+
+      // Get organization to check if ShipEngine is configured
+      const org = await ctx.runQuery(internal.organizations.get, { orgId: args.orgId });
+      if (!org || !org.shipEngineConnected) {
+        throw new Error("ShipEngine not configured for this organization");
+      }
+
+      // TODO: Get ShipEngine API key from Auth0 Organization Metadata
+      // Implementation with Auth0 Management API:
+      /*
+      import { getShipEngineApiKey } from "../mgmt";
+      
+      // Retrieve API key from Organization Metadata (encrypted at rest)
+      const shipEngineApiKey = await getShipEngineApiKey(args.orgId);
+
+      // Use API key to call ShipEngine API
+      const shipEngine = new ShipEngineClient(shipEngineApiKey);
+      
+      const labelRequest = {
+        shipment: {
+          service_code: "usps_priority_mail", // Or determine dynamically
+          ship_to: {
+            name: order.recipientName,
+            phone: order.recipientPhone,
+            address_line1: order.recipientAddress,
+            city_locality: order.recipientCity,
+            state_province: order.recipientProvince,
+            postal_code: order.recipientPostalCode,
+            country_code: order.recipientCountry,
+          },
+          ship_from: {
+            // Get from org settings
+            name: org.name,
+            // ... other address fields
+          },
+          packages: [
+            {
+              weight: {
+                value: order.weight || 300,
+                unit: "gram",
+              },
+              dimensions: {
+                length: 10,
+                width: 10,
+                height: 10,
+                unit: "centimeter",
+              },
+            },
+          ],
+        },
+      };
+
+      const label = await shipEngine.createLabel(labelRequest);
+
+      // Update order with tracking info
+      await ctx.runMutation(internal.orders.updateShipping, {
+        orderId: args.orderId,
+        trackingNumber: label.tracking_number,
+        labelUrl: label.label_download.pdf,
+        shippingCost: label.shipment_cost.amount,
+        courierService: label.carrier_code,
+      });
+
+      return {
+        success: true,
+        trackingNumber: label.tracking_number,
+        labelUrl: label.label_download.pdf,
+      };
+      */
+
+      // Placeholder for demo - simulate label purchase
+      const mockTrackingNumber = `TRACK-${Date.now()}`;
+      const mockLabelUrl = `https://example.com/label/${args.orderId}`;
+
+      await ctx.runMutation(internal.orders.updateShipping, {
+        orderId: args.orderId,
+        trackingNumber: mockTrackingNumber,
+        labelUrl: mockLabelUrl,
+        shippingCost: 5.99,
+        courierService: "DEMO_COURIER",
+      });
+
+      return {
+        success: true,
+        trackingNumber: mockTrackingNumber,
+        labelUrl: mockLabelUrl,
+        message: "Label purchased successfully (DEMO MODE)",
+      };
+    } catch (error: any) {
+      console.error("ShippingAgent error:", error);
+      throw new Error(`Failed to purchase label: ${error.message}`);
+    }
+  },
+});
+
+// Compare shipping rates (future feature)
+export const compareRates = internalAction({
+  args: {
+    orderId: v.id("orders"),
+    orgId: v.id("organizations"),
+  },
+  handler: async (_ctx, _args) => {
+    // TODO: Implement rate comparison across multiple carriers
+    // This would also use Organization Metadata to access ShipEngine
+
+    return {
+      rates: [
+        { carrier: "USPS", service: "Priority Mail", cost: 5.99, deliveryDays: 3 },
+        { carrier: "USPS", service: "First Class", cost: 3.99, deliveryDays: 5 },
+      ],
+    };
+  },
+});

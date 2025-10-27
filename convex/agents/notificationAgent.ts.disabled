@@ -1,0 +1,179 @@
+// convex/agents/notificationAgent.ts - Proactive Notification Triggers
+
+import { v } from "convex/values";
+
+import { internal } from "../_generated/api";
+import { internalAction } from "../_generated/server";
+
+// Send stock alert when inventory is critically low
+export const sendStockAlert = internalAction({
+  args: {
+    orgId: v.id("organizations"),
+    productId: v.id("products"),
+    reportedBy: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // TODO: Implement internal.inventory.get query
+    // Get product details
+    // const product = await ctx.runQuery(internal.inventory.get, { productId: args.productId });
+    // if (!product) throw new Error("Product not found");
+    const product = { sku: "DEMO-SKU", name: "Demo Product", stockQuantity: 5 };
+
+    // TODO: Implement internal.organizations.get query  
+    // Get organization and owner details
+    // const org = await ctx.runQuery(internal.organizations.get, { orgId: args.orgId });
+    const org: any = { ownerId: "demo-owner" };
+    if (!org) throw new Error("Organization not found");
+
+    const owner = await ctx.runQuery(internal.users.getUserById, { userId: org.ownerId });
+    if (!owner || !owner.email) throw new Error("Owner email not found");
+
+    // Get all admins in the org
+    const allUsers = await ctx.runQuery(internal.users.listByOrg, { orgId: args.orgId });
+    const admins = allUsers.filter((u: any) => u.role === "admin");
+
+    const recipientEmails = [owner.email, ...admins.map((a: any) => a.email).filter(Boolean)] as string[];
+
+    // Send email via Resend
+    // TODO: Implement sendStockAlert in emails.ts
+    await ctx.runMutation(internal.emails.createEmailLog, {
+      orgId: args.orgId,
+      recipientEmail: recipientEmails[0],
+      subject: `Stock Alert: ${product.sku}`,
+      template: "stock_alert",
+    });
+    
+    // await ctx.runAction(internal.emails.sendStockAlert, {
+    //   orgId: args.orgId,
+    //   productSku: product.sku,
+    //   productName: product.name,
+    //   currentStock: product.stockQuantity,
+    //   recipientEmails,
+    //   reportedBy: args.reportedBy || "System",
+    // });
+
+    return { success: true, emailsSent: recipientEmails.length };
+  },
+});
+
+// Send order failure notification
+export const sendOrderFailure = internalAction({
+  args: {
+    orgId: v.id("organizations"),
+    orderId: v.id("orders"),
+    errorMessage: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const order = await ctx.runQuery(internal.orders.get, { orderId: args.orderId });
+    if (!order) throw new Error("Order not found");
+
+    const org = await ctx.runQuery(internal.organizations.get, { orgId: args.orgId });
+    if (!org) throw new Error("Organization not found");
+
+    const owner = await ctx.runQuery(internal.users.getUserById, { userId: org.ownerId });
+
+    const allUsers = await ctx.runQuery(internal.users.listByOrg, { orgId: args.orgId });
+    const admins = allUsers.filter((u: any) => u.role === "admin");
+
+    const recipientEmails = [owner?.email, ...admins.map((a: any) => a.email)].filter(Boolean) as string[];
+
+    // TODO: Implement sendOrderFailure in emails.ts
+    await ctx.runMutation(internal.emails.createEmailLog, {
+      orgId: args.orgId,
+      recipientEmail: recipientEmails[0] || "admin@example.com",
+      subject: `Order Failure: ${order.orderNumber}`,
+      template: "order_failure",
+    });
+    
+    // await ctx.runAction(internal.emails.sendOrderFailure, {
+    //   orgId: args.orgId,
+    //   orderNumber: order.orderNumber,
+    //   recipientEmails,
+    //   errorMessage: args.errorMessage,
+    // });
+
+    return { success: true };
+  },
+});
+
+// Generate and send daily briefing
+export const sendDailyBriefing = internalAction({
+  args: { orgId: v.id("organizations") },
+  handler: async (ctx, args) => {
+    const org = await ctx.runQuery(internal.organizations.get, { orgId: args.orgId });
+    if (!org) throw new Error("Organization not found");
+
+    const owner = await ctx.runQuery(internal.users.getUserById, { userId: org.ownerId });
+    if (!owner || !owner.email) throw new Error("Owner email not found");
+
+    // Get all orders (role-filtered by owner)
+    const orders = await ctx.runQuery(internal.orders.list, { orgId: args.orgId });
+
+    // Filter today's orders
+    const startOfDay = new Date().setHours(0, 0, 0, 0);
+    const todayOrders = Array.isArray(orders) ? orders.filter((o: any) => o.createdAt >= startOfDay) : [];
+
+    // Calculate metrics (only owner can see totalProfit)
+    const totalRevenue = todayOrders.reduce((sum: number, o: any) => sum + (o.totalPrice || 0), 0);
+    const totalProfit = todayOrders.reduce((sum: number, o: any) => sum + (o.totalProfit || 0), 0);
+
+    // Get low stock items
+    const lowStockProducts = await ctx.runQuery(internal.inventory.getLowStock, {
+      orgId: args.orgId,
+      threshold: 10,
+    });
+
+    const lowStockItems = Array.isArray(lowStockProducts)
+      ? lowStockProducts.map((p: any) => `${p.name} (${p.sku}): ${p.stockQuantity} left`)
+      : [];
+
+    // TODO: Implement sendDailyBriefing in emails.ts
+    await ctx.runMutation(internal.emails.createEmailLog, {
+      orgId: args.orgId,
+      recipientEmail: owner.email || "owner@example.com",
+      subject: "Daily Briefing",
+      template: "daily_briefing",
+    });
+    
+    // await ctx.runAction(internal.emails.sendDailyBriefing, {
+    //   orgId: args.orgId,
+    //   ownerEmail: owner.email,
+    //   summary: {
+    //     orderCount: todayOrders.length,
+    //     totalRevenue,
+    //     totalProfit,
+    //     lowStockItems,
+    //   },
+    // });
+
+    return { success: true };
+  },
+});
+
+// Check for low stock and trigger alerts (scheduled job)
+export const checkLowStock = internalAction({
+  args: { orgId: v.id("organizations") },
+  handler: async (ctx, args): Promise<{ productsChecked: number }> => {
+    const lowStockProducts: any[] = await ctx.runQuery(internal.inventory.getLowStock, {
+      orgId: args.orgId,
+      threshold: 5, // Critical threshold
+    });
+
+    if (!Array.isArray(lowStockProducts)) {
+      return { productsChecked: 0 };
+    }
+
+    for (const product of lowStockProducts) {
+      // Check if alert was already sent recently (within 24 hours)
+      // We would need an emailLogs query function for this
+      // For now, just send the alert
+      await ctx.runAction(internal.agents.notificationAgent.sendStockAlert, {
+        orgId: args.orgId,
+        productId: product._id,
+        reportedBy: "Automated Check",
+      });
+    }
+
+    return { productsChecked: lowStockProducts.length };
+  },
+});

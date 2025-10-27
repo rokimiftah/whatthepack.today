@@ -1,0 +1,182 @@
+// convex/agents/extractionAgent.ts - LLM Data Extraction (Admin Chat Paste)
+
+import { v } from "convex/values";
+
+import { action } from "../_generated/server";
+import { requireRole } from "../auth";
+
+// Extract order details from raw chat log
+export const extractOrderFromChat = action({
+  args: {
+    orgId: v.id("organizations"),
+    chatLog: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireRole(ctx, args.orgId, ["owner", "admin"]);
+
+    // TODO: Implement with OpenAI
+    /*
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+    
+    const systemPrompt = `You are an AI assistant that extracts structured order data from customer chat logs.
+
+Extract the following information:
+- Customer name
+- Customer phone
+- Customer email (if available)
+- Recipient name (if different from customer)
+- Recipient phone
+- Complete shipping address (address, city, province, postal code, country)
+- Items ordered (product names and quantities)
+- Any special notes or instructions
+
+Return the data in JSON format with these exact fields:
+{
+  "customerName": string,
+  "customerPhone": string,
+  "customerEmail": string | null,
+  "recipientName": string,
+  "recipientPhone": string,
+  "recipientAddress": string,
+  "recipientCity": string,
+  "recipientProvince": string,
+  "recipientPostalCode": string,
+  "recipientCountry": string,
+  "items": [{ "productName": string, "quantity": number }],
+  "notes": string | null
+}
+
+If you cannot find certain information, use null or empty string.
+Be conservative - only extract information you're confident about.`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: args.chatLog },
+      ],
+      response_format: { type: "json_object" },
+    });
+
+    const extracted = JSON.parse(response.choices[0].message.content!);
+    
+    // Match product names to actual SKUs from inventory
+    const products = await ctx.runQuery(async (ctx) => {
+      return await ctx.db
+        .query("products")
+        .withIndex("by_orgId", (q) => q.eq("orgId", args.orgId))
+        .collect();
+    });
+
+    const matchedItems = extracted.items.map((item: any) => {
+      const product = products.find((p) => 
+        p.name.toLowerCase().includes(item.productName.toLowerCase()) ||
+        item.productName.toLowerCase().includes(p.name.toLowerCase())
+      );
+      
+      return {
+        productId: product?._id,
+        sku: product?.sku,
+        productName: product?.name || item.productName,
+        quantity: item.quantity,
+        matched: !!product,
+      };
+    });
+
+    return {
+      ...extracted,
+      items: matchedItems,
+    };
+    */
+
+    // Placeholder for demo - simple regex extraction
+    const extractedData = {
+      customerName: extractField(args.chatLog, /nama[:\s]+([^\n]+)/i) || "",
+      customerPhone: extractField(args.chatLog, /(?:hp|phone|wa|whatsapp)[:\s]+([\d\s\-+]+)/i) || "",
+      customerEmail: extractField(args.chatLog, /email[:\s]+([^\s@]+@[^\s@]+\.[^\s@]+)/i) || null,
+      recipientName: extractField(args.chatLog, /(?:penerima|recipient)[:\s]+([^\n]+)/i) || "",
+      recipientPhone: extractField(args.chatLog, /(?:hp penerima|recipient phone)[:\s]+([\d\s\-+]+)/i) || "",
+      recipientAddress: extractField(args.chatLog, /(?:alamat|address)[:\s]+([^\n]+)/i) || "",
+      recipientCity: extractField(args.chatLog, /(?:kota|city)[:\s]+([^\n]+)/i) || "",
+      recipientProvince: extractField(args.chatLog, /(?:provinsi|province)[:\s]+([^\n]+)/i) || "",
+      recipientPostalCode: extractField(args.chatLog, /(?:kode pos|postal)[:\s]+([\d]+)/i) || "",
+      recipientCountry: "Indonesia",
+      items: [
+        {
+          productName: "Product Name (extracted from chat)",
+          quantity: 1,
+          matched: false,
+        },
+      ],
+      notes: "Extracted via AI Agent (demo mode)",
+      confidence: 0.7,
+    };
+
+    return extractedData;
+  },
+});
+
+// Helper function for regex extraction
+function extractField(text: string, regex: RegExp): string | null {
+  const match = text.match(regex);
+  return match ? match[1].trim() : null;
+}
+
+// Validate and clean extracted data
+export const validateExtractedData = action({
+  args: {
+    data: v.object({
+      customerName: v.string(),
+      customerPhone: v.string(),
+      recipientAddress: v.string(),
+      recipientCity: v.string(),
+    }),
+  },
+  handler: async (_ctx, args) => {
+    const errors: string[] = [];
+
+    if (!args.data.customerName || args.data.customerName.length < 3) {
+      errors.push("Customer name is too short");
+    }
+
+    if (!args.data.customerPhone || args.data.customerPhone.length < 8) {
+      errors.push("Customer phone is invalid");
+    }
+
+    if (!args.data.recipientAddress || args.data.recipientAddress.length < 10) {
+      errors.push("Recipient address is too short");
+    }
+
+    if (!args.data.recipientCity) {
+      errors.push("Recipient city is required");
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+    };
+  },
+});
+
+// Enhance extracted data with AI suggestions
+export const enhanceOrderData = action({
+  args: {
+    orgId: v.id("organizations"),
+    extractedData: v.any(),
+  },
+  handler: async (ctx, args) => {
+    await requireRole(ctx, args.orgId, ["owner", "admin"]);
+
+    // TODO: Use AI to suggest corrections or improvements
+    // For example:
+    // - Standardize address format
+    // - Correct common typos
+    // - Format phone numbers
+    // - Suggest matching products from inventory
+
+    return {
+      enhanced: args.extractedData,
+      suggestions: ["Consider adding apartment/unit number to address", "Phone number format: +62-xxx-xxxx-xxxx"],
+    };
+  },
+});

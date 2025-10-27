@@ -1,0 +1,247 @@
+// convex/vapi.ts - VAPI Voice Assistant Integration for WhatThePack
+
+import { internal } from "./_generated/api";
+import { httpAction } from "./_generated/server";
+
+// VAPI tool definitions for voice commands
+export const vapiTools = [
+  {
+    type: "function",
+    function: {
+      name: "get_next_order",
+      description: "Get the next order in the packing queue for the packer to process",
+      parameters: {
+        type: "object",
+        properties: {
+          orgId: {
+            type: "string",
+            description: "Organization ID",
+          },
+        },
+        required: ["orgId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "complete_order",
+      description: "Mark an order as packed and trigger shipping label purchase",
+      parameters: {
+        type: "object",
+        properties: {
+          orgId: {
+            type: "string",
+            description: "Organization ID",
+          },
+          orderId: {
+            type: "string",
+            description: "Order ID to complete",
+          },
+          weight: {
+            type: "number",
+            description: "Package weight in grams",
+          },
+        },
+        required: ["orgId", "orderId", "weight"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "report_stockout",
+      description: "Report that a product is out of stock",
+      parameters: {
+        type: "object",
+        properties: {
+          orgId: {
+            type: "string",
+            description: "Organization ID",
+          },
+          sku: {
+            type: "string",
+            description: "Product SKU that is out of stock",
+          },
+        },
+        required: ["orgId", "sku"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "check_stock",
+      description: "Check the current stock level of a product",
+      parameters: {
+        type: "object",
+        properties: {
+          orgId: {
+            type: "string",
+            description: "Organization ID",
+          },
+          sku: {
+            type: "string",
+            description: "Product SKU to check",
+          },
+        },
+        required: ["orgId", "sku"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_packing_instructions",
+      description: "Get packing instructions and warehouse location for a product",
+      parameters: {
+        type: "object",
+        properties: {
+          orgId: {
+            type: "string",
+            description: "Organization ID",
+          },
+          sku: {
+            type: "string",
+            description: "Product SKU",
+          },
+        },
+        required: ["orgId", "sku"],
+      },
+    },
+  },
+];
+
+// VAPI webhook handler (enhanced version)
+export const handleVapiWebhook = httpAction(async (ctx, request) => {
+  // Verify VAPI signature
+  const signature = request.headers.get("x-vapi-signature");
+  const vapiSecret = process.env.VAPI_WEBHOOK_SECRET;
+
+  if (vapiSecret && signature !== vapiSecret) {
+    return new Response("Invalid signature", { status: 401 });
+  }
+
+  const body = await request.json();
+  const { toolName, parameters } = body;
+
+  if (!toolName || !parameters) {
+    return new Response("Missing required fields", { status: 400 });
+  }
+
+  const { orgId } = parameters;
+  if (!orgId) {
+    return new Response("Missing orgId", { status: 400 });
+  }
+
+  try {
+    let result: any;
+
+    switch (toolName) {
+      case "get_next_order":
+        result = await ctx.runQuery(internal.orders.getNextOrder, { orgId });
+        if (!result) {
+          return Response.json({
+            success: true,
+            message: "No orders in queue",
+            speakableMessage: "There are no orders in the packing queue right now.",
+          });
+        }
+        return Response.json({
+          success: true,
+          order: result,
+          speakableMessage: `Next order is ${result.orderNumber} for ${result.recipientName} in ${result.recipientCity}. It contains ${result.items.length} item${result.items.length > 1 ? "s" : ""}.`,
+        });
+
+      case "complete_order": {
+        await ctx.runMutation(internal.orders.markPacked, {
+          orderId: parameters.orderId,
+          weight: parameters.weight,
+        });
+        // Trigger shipping agent to buy label
+        const labelResult = await ctx.runAction(internal.agents.shippingAgent.buyLabel, {
+          orderId: parameters.orderId,
+          orgId,
+        });
+        return Response.json({
+          success: true,
+          trackingNumber: labelResult.trackingNumber,
+          speakableMessage: `Order completed. Label purchased. Tracking number is ${labelResult.trackingNumber}.`,
+        });
+      }
+
+      case "report_stockout": {
+        const product = await ctx.runQuery(internal.inventory.getBySku, {
+          orgId,
+          sku: parameters.sku,
+        });
+        if (product) {
+          await ctx.runMutation(internal.inventory.adjustStock, {
+            productId: product._id,
+            adjustment: -product.stockQuantity,
+            notes: "Stock out reported via VAPI",
+          });
+          // Send notification
+          await ctx.runAction(internal.agents.notificationAgent.sendStockAlert, {
+            orgId,
+            productId: product._id,
+            reportedBy: "Voice Assistant",
+          });
+        }
+        return Response.json({
+          success: true,
+          speakableMessage: `Stock alert sent for ${parameters.sku}. Management has been notified.`,
+        });
+      }
+
+      case "check_stock": {
+        const stockProduct = await ctx.runQuery(internal.inventory.getBySku, {
+          orgId,
+          sku: parameters.sku,
+        });
+        if (!stockProduct) {
+          return Response.json({
+            success: false,
+            speakableMessage: `Product ${parameters.sku} not found`,
+          });
+        }
+        return Response.json({
+          success: true,
+          stock: stockProduct.stockQuantity,
+          speakableMessage: `Current stock for ${parameters.sku} is ${stockProduct.stockQuantity} units`,
+        });
+      }
+
+      case "get_packing_instructions": {
+        const instructionsResult = await ctx.runAction(internal.agents.ragAgent.getPackingInstructions, {
+          orgId,
+          sku: parameters.sku,
+        });
+        if (!instructionsResult.found) {
+          return Response.json({
+            success: false,
+            speakableMessage: instructionsResult.message,
+          });
+        }
+        return Response.json({
+          success: true,
+          instructions: instructionsResult,
+          speakableMessage: `${instructionsResult.name} is located at ${instructionsResult.location}. ${instructionsResult.instructions}`,
+        });
+      }
+
+      default:
+        return new Response("Unknown tool", { status: 400 });
+    }
+  } catch (error: any) {
+    console.error("VAPI webhook error:", error);
+    return Response.json(
+      {
+        success: false,
+        error: error.message,
+        speakableMessage: "Sorry, there was an error processing your request. Please try again.",
+      },
+      { status: 500 },
+    );
+  }
+});

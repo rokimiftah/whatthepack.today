@@ -1,0 +1,104 @@
+// convex/agents/ragAgent.ts - Role-Aware RAG Implementation
+
+import { v } from "convex/values";
+
+import { internal } from "../_generated/api";
+import { action } from "../_generated/server";
+import { requireRole } from "../auth";
+
+// Answer query with role-aware context filtering
+export const answerQuery = action({
+  args: {
+    orgId: v.id("organizations"),
+    prompt: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    // Verify user belongs to org
+    await requireRole(ctx, args.orgId, ["owner", "admin", "packer"]);
+
+    const role = identity.role as "owner" | "admin" | "packer";
+
+    // Fetch role-specific context from database using internal APIs
+    const products = await ctx.runQuery(internal.inventory.list, { orgId: args.orgId });
+    const orders = await ctx.runQuery(internal.orders.list, { orgId: args.orgId });
+
+    // Context is already role-filtered by the inventory.list and orders.list functions
+    const contextData = {
+      products,
+      orders,
+    };
+
+    // TODO: Send to OpenAI with role-specific system prompt
+    /*
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+    
+    const systemPrompt = `You are an AI assistant for WhatThePack logistics platform.
+User role: ${role}
+You can ONLY answer based on the provided context.
+
+${role === "owner" ? "You can discuss financial data, profit margins, and business insights." : ""}
+${role === "admin" ? "You can discuss orders and products, but NOT financial data or profit margins." : ""}
+${role === "packer" ? "You can ONLY discuss packing instructions, warehouse locations, and SOPs. You CANNOT access financial data." : ""}
+
+Context: ${JSON.stringify(contextData, null, 2)}`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: args.prompt },
+      ],
+    });
+
+    return response.choices[0].message.content;
+    */
+
+    // Placeholder response for demo
+    const productCount = Array.isArray(products) ? products.length : 0;
+    const orderCount = Array.isArray(orders) ? orders.length : 0;
+
+    const demoResponses = {
+      owner: `As owner, you have access to all data. Your query: "${args.prompt}". Context includes ${productCount} products and ${orderCount} orders with full financial details.`,
+      admin: `As admin, you can view orders and products. Your query: "${args.prompt}". Context includes ${productCount} products (no cost data) and ${orderCount} orders.`,
+      packer: `As packer, you can view packing instructions. Your query: "${args.prompt}". Context includes ${productCount} products with SOPs and locations.`,
+    };
+
+    return {
+      answer: demoResponses[role],
+      role,
+      contextSize: JSON.stringify(contextData).length,
+    };
+  },
+});
+
+// Quick product lookup for packer (SOP only)
+export const getPackingInstructions = action({
+  args: {
+    orgId: v.id("organizations"),
+    sku: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireRole(ctx, args.orgId, ["packer"]);
+
+    const product = await ctx.runQuery(internal.inventory.getBySku, {
+      orgId: args.orgId,
+      sku: args.sku,
+    });
+
+    if (!product) {
+      return { found: false, message: `Product ${args.sku} not found` };
+    }
+
+    return {
+      found: true,
+      sku: product.sku,
+      name: product.name,
+      location: product.warehouseLocation,
+      instructions: product.sop_packing || "No special packing instructions",
+      stock: product.stockQuantity,
+    };
+  },
+});
