@@ -216,6 +216,16 @@ export const listByOrg = internalQuery({
   },
 });
 
+export const getByAuth0Id = internalQuery({
+  args: { auth0Id: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("users")
+      .withIndex("by_auth0Id", (q) => q.eq("auth0Id", args.auth0Id))
+      .first();
+  },
+});
+
 export const ensureAuth0UserRecord = internalMutation({
   args: {
     auth0Id: v.string(),

@@ -186,23 +186,17 @@ export const requireRole = async (ctx: any, orgId: any, allowedRoles: string[]) 
     throw new Error("Not authenticated");
   }
 
+  // Resolve roles with safety fallbacks (ensures owners without claims are covered)
+  const userRoles = await getUserRoles(ctx);
+
   // Get custom claims from Auth0 JWT
   const customClaims = identity as any;
-  const userRoles: string[] = customClaims["https://whatthepack.today/roles"] || [];
-  const userAuth0OrgId: string = customClaims["https://whatthepack.today/orgId"];
+  const userAuth0OrgId: string | undefined = customClaims["https://whatthepack.today/orgId"];
 
   // Check if user has any of the allowed roles
-  const hasRole = userRoles.some((role) => allowedRoles.includes(role));
+  const hasRole = allowedRoles.some((role) => userRoles.includes(role));
   if (!hasRole) {
     throw new Error(`Access denied. Required roles: ${allowedRoles.join(", ")}. User roles: ${userRoles.join(", ")}`);
-  }
-
-  // Verify user belongs to the organization (multi-tenancy isolation)
-  // JWT now contains Auth0 org_id (org_xxxxx), but we receive Convex org_id
-  // We need to fetch the Convex org and compare auth0OrgId
-
-  if (!userAuth0OrgId) {
-    throw new Error("Access denied. No organization found in token. Please re-login.");
   }
 
   // Get the organization from Convex to check its auth0OrgId
@@ -216,26 +210,56 @@ export const requireRole = async (ctx: any, orgId: any, allowedRoles: string[]) 
     throw new Error("Organization not found");
   }
 
-  const normalizedClaimOrgId =
-    typeof ctx.db?.normalizeId === "function" ? ctx.db.normalizeId("organizations", userAuth0OrgId) : null;
-  if (normalizedClaimOrgId) {
-    if (normalizedClaimOrgId !== orgId) {
-      console.error("[requireRole] Claim orgId does not match requested orgId", {
-        claim: userAuth0OrgId,
-        normalizedClaimOrgId,
-        requestedOrgId: orgId,
-      });
-      throw new Error("Access denied. User is not a member of this organization");
-    }
+  let resolvedOrgId: Id<"organizations"> | null = null;
+  try {
+    resolvedOrgId = await getUserOrgId(ctx);
+  } catch (error) {
+    console.warn("[requireRole] Unable to resolve user org via helper", {
+      auth0Id: identity.subject,
+      requestedOrgId: orgId,
+      error,
+    });
+  }
 
-    if (org.auth0OrgId && org.auth0OrgId !== userAuth0OrgId) {
-      console.warn("[requireRole] Claim contains Convex orgId instead of Auth0 org id. Consider refreshing JWT.", {
-        userAuth0OrgId,
-        orgAuth0OrgId: org.auth0OrgId,
-      });
-    }
-  } else if (org.auth0OrgId && org.auth0OrgId !== userAuth0OrgId) {
-    console.error("[requireRole] Org mismatch:", {
+  const normalizedClaimOrgId =
+    userAuth0OrgId && typeof ctx.db?.normalizeId === "function"
+      ? ctx.db.normalizeId("organizations", userAuth0OrgId)
+      : null;
+
+  if (normalizedClaimOrgId && normalizedClaimOrgId !== orgId) {
+    console.error("[requireRole] Claim orgId does not match requested orgId", {
+      auth0Id: identity.subject,
+      claim: userAuth0OrgId,
+      normalizedClaimOrgId,
+      requestedOrgId: orgId,
+    });
+    throw new Error("Access denied. User is not a member of this organization");
+  }
+
+  if (!resolvedOrgId && normalizedClaimOrgId) {
+    resolvedOrgId = normalizedClaimOrgId;
+  }
+
+  if (!resolvedOrgId && userAuth0OrgId && org.auth0OrgId && org.auth0OrgId === userAuth0OrgId) {
+    resolvedOrgId = org._id;
+  }
+
+  if (!resolvedOrgId) {
+    throw new Error("Access denied. Unable to determine organization membership. Please re-login.");
+  }
+
+  if (resolvedOrgId !== orgId) {
+    console.error("[requireRole] Resolved org does not match requested org", {
+      auth0Id: identity.subject,
+      resolvedOrgId,
+      requestedOrgId: orgId,
+    });
+    throw new Error("Access denied. User is not a member of this organization");
+  }
+
+  if (userAuth0OrgId && org.auth0OrgId && org.auth0OrgId !== userAuth0OrgId) {
+    console.error("[requireRole] Org mismatch", {
+      auth0Id: identity.subject,
       userAuth0OrgId,
       orgAuth0OrgId: org.auth0OrgId,
       convexOrgId: orgId,
@@ -256,54 +280,98 @@ export const getUserOrgId = async (ctx: any): Promise<Id<"organizations">> => {
   const customClaims = identity as any;
   const claimValue = customClaims["https://whatthepack.today/orgId"];
 
-  if (!claimValue) {
-    throw new Error("Organization ID not found in token. User may not be assigned to an organization.");
-  }
+  const fetchOrgById = async (orgId: Id<"organizations">) => {
+    if (ctx.db?.get) {
+      return await ctx.db.get(orgId);
+    }
+    if (typeof ctx.runQuery === "function") {
+      return await ctx.runQuery(internal.organizations.get, { orgId });
+    }
+    return null;
+  };
 
-  // Backward compatibility: older tokens stored Convex orgId directly
-  const normalize = typeof ctx.db?.normalizeId === "function" ? ctx.db.normalizeId.bind(ctx.db) : null;
+  const fetchOrgByAuth0Id = async (auth0OrgId: string) => {
+    if (ctx.db?.query) {
+      return await ctx.db
+        .query("organizations")
+        .withIndex("by_auth0OrgId", (q: any) => q.eq("auth0OrgId", auth0OrgId))
+        .first();
+    }
+    if (typeof ctx.runQuery === "function") {
+      return await ctx.runQuery(internal.organizations.getByAuth0OrgId, { auth0OrgId });
+    }
+    return null;
+  };
 
-  const isAuth0OrgId = typeof claimValue === "string" && claimValue.startsWith("org_");
+  const fetchOrgByOwner = async () => {
+    if (ctx.db?.query) {
+      return await ctx.db
+        .query("organizations")
+        .withIndex("by_ownerAuth0Id", (q: any) => q.eq("ownerAuth0Id", identity.subject))
+        .first();
+    }
+    if (typeof ctx.runQuery === "function") {
+      return await ctx.runQuery(internal.organizations.getByOwnerAuth0Id, { auth0Id: identity.subject });
+    }
+    return null;
+  };
 
-  if (!isAuth0OrgId) {
-    const normalizedId = normalize ? normalize("organizations", claimValue) : null;
+  const fetchUserByAuth0Id = async () => {
+    if (ctx.db?.query) {
+      return await ctx.db
+        .query("users")
+        .withIndex("by_auth0Id", (q: any) => q.eq("auth0Id", identity.subject))
+        .first();
+    }
+    if (typeof ctx.runQuery === "function") {
+      return await ctx.runQuery(internal.users.getByAuth0Id, { auth0Id: identity.subject });
+    }
+    return null;
+  };
 
-    if (normalizedId) {
-      const existing = ctx.db?.get
-        ? await ctx.db.get(normalizedId)
-        : typeof ctx.runQuery === "function"
-          ? await ctx.runQuery(internal.organizations.get, { orgId: normalizedId })
-          : null;
-      if (existing) {
-        return normalizedId;
+  if (claimValue) {
+    const normalize = typeof ctx.db?.normalizeId === "function" ? ctx.db.normalizeId.bind(ctx.db) : null;
+
+    if (normalize && typeof claimValue === "string") {
+      try {
+        const normalized = normalize("organizations", claimValue);
+        if (normalized) {
+          const existing = await fetchOrgById(normalized);
+          if (existing) {
+            return normalized;
+          }
+        }
+      } catch (_error) {
+        // ignore normalization failure, fall through to other strategies
       }
     }
 
-    if (typeof ctx.runQuery === "function") {
-      const org = await ctx.runQuery(internal.organizations.get, { orgId: claimValue as Id<"organizations"> });
-      if (org) {
+    if (typeof claimValue === "string" && !claimValue.startsWith("org_")) {
+      const existing = await fetchOrgById(claimValue as Id<"organizations">);
+      if (existing) {
         return claimValue as Id<"organizations">;
       }
     }
 
-    throw new Error("Organization not found for provided orgId claim. Please re-login.");
+    if (typeof claimValue === "string" && claimValue.startsWith("org_")) {
+      const organization = await fetchOrgByAuth0Id(claimValue);
+      if (organization) {
+        return organization._id as Id<"organizations">;
+      }
+    }
   }
 
-  let organization: any;
-  if (ctx.db?.query) {
-    organization = await ctx.db
-      .query("organizations")
-      .withIndex("by_auth0OrgId", (q: any) => q.eq("auth0OrgId", claimValue))
-      .first();
-  } else if (typeof ctx.runQuery === "function") {
-    organization = await ctx.runQuery(internal.organizations.getByAuth0OrgId, { auth0OrgId: claimValue });
+  const ownerOrg = await fetchOrgByOwner();
+  if (ownerOrg) {
+    return ownerOrg._id as Id<"organizations">;
   }
 
-  if (!organization) {
-    throw new Error("Organization not found for provided orgId claim. Please re-login.");
+  const userRecord = await fetchUserByAuth0Id();
+  if (userRecord?.orgId) {
+    return userRecord.orgId as Id<"organizations">;
   }
 
-  return organization._id as Id<"organizations">;
+  throw new Error("Organization ID not found in token. User may not be assigned to an organization.");
 };
 
 // Helper to get user's roles from JWT
@@ -316,22 +384,61 @@ export const getUserRoles = async (ctx: any): Promise<string[]> => {
   const customClaims = identity as any;
   let roles: string[] = customClaims["https://whatthepack.today/roles"] || [];
 
-  // Safety: Only treat user as 'owner' if they are actually the owner of the org in Convex
-  if (roles.includes("owner")) {
-    try {
-      const orgId = await getUserOrgId(ctx);
-      const org = ctx.db?.get
-        ? await ctx.db.get(orgId)
-        : typeof ctx.runQuery === "function"
-          ? await ctx.runQuery(internal.organizations.get, { orgId })
-          : null;
-      const isRealOwner = org && org.ownerAuth0Id === identity.subject;
-      if (!isRealOwner) {
-        roles = roles.filter((r: string) => r !== "owner");
-      }
-    } catch (_e) {
-      // If org cannot be resolved, do not erroneously assign owner
-      roles = roles.filter((r: string) => r !== "owner");
+  let resolvedOrgId: Id<"organizations"> | null = null;
+  let organization: any = null;
+
+  try {
+    resolvedOrgId = await getUserOrgId(ctx);
+  } catch (error) {
+    console.warn("[getUserRoles] Unable to resolve org via helper", {
+      auth0Id: identity.subject,
+      error,
+    });
+  }
+
+  if (resolvedOrgId) {
+    organization = ctx.db?.get
+      ? await ctx.db.get(resolvedOrgId)
+      : typeof ctx.runQuery === "function"
+        ? await ctx.runQuery(internal.organizations.get, { orgId: resolvedOrgId })
+        : null;
+  } else {
+    if (ctx.db?.query) {
+      organization = await ctx.db
+        .query("organizations")
+        .withIndex("by_ownerAuth0Id", (q: any) => q.eq("ownerAuth0Id", identity.subject))
+        .first();
+    } else if (typeof ctx.runQuery === "function") {
+      organization = await ctx.runQuery(internal.organizations.getByOwnerAuth0Id, { auth0Id: identity.subject });
+    }
+    if (organization) {
+      resolvedOrgId = organization._id as Id<"organizations">;
+    }
+  }
+
+  const isRealOwner = Boolean(organization && organization.ownerAuth0Id === identity.subject);
+
+  if (roles.includes("owner") && !isRealOwner) {
+    roles = roles.filter((r: string) => r !== "owner");
+  }
+
+  if (isRealOwner && !roles.includes("owner")) {
+    roles = [...roles, "owner"];
+  }
+
+  if (!roles.length) {
+    let userRecord: any = null;
+    if (ctx.db?.query) {
+      userRecord = await ctx.db
+        .query("users")
+        .withIndex("by_auth0Id", (q: any) => q.eq("auth0Id", identity.subject))
+        .first();
+    } else if (typeof ctx.runQuery === "function") {
+      userRecord = await ctx.runQuery(internal.users.getByAuth0Id, { auth0Id: identity.subject });
+    }
+
+    if (userRecord?.role && typeof userRecord.role === "string" && !roles.includes(userRecord.role)) {
+      roles = [userRecord.role];
     }
   }
 
