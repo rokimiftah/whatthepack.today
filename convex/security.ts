@@ -3,7 +3,7 @@
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 
-import { getUserRoles } from "./auth";
+import { getUserOrgId, getUserRoles } from "./auth";
 
 /**
  * Require that user has access to specific organization
@@ -15,30 +15,73 @@ export async function requireOrgAccess(ctx: QueryCtx | MutationCtx, requestedOrg
     throw new Error("Not authenticated");
   }
 
-  // Get user's Auth0 org_id from JWT
-  const customClaims = identity as any;
-  const userAuth0OrgId = customClaims["https://whatthepack.today/orgId"];
-
-  if (!userAuth0OrgId) {
-    throw new Error("Access denied. No organization found in token. Please re-login.");
-  }
-
   // Get the requested organization from Convex
   const org = await ctx.db.get(requestedOrgId);
   if (!org) {
     throw new Error("Organization not found");
   }
+  const customClaims = identity as any;
+  const rawClaimOrgId = customClaims["https://whatthepack.today/orgId"];
 
-  // Compare JWT's Auth0 org_id with Convex org's auth0OrgId
-  if (org.auth0OrgId !== userAuth0OrgId) {
-    console.warn("[Security] Unauthorized org access attempt", {
-      auth0Id: identity.subject,
-      userAuth0OrgId,
-      orgAuth0OrgId: org.auth0OrgId,
-      requestedOrgId,
-    });
-    throw new Error("Unauthorized: Cannot access other organization's data");
+  if (!rawClaimOrgId) {
+    throw new Error("Access denied. No organization found in token. Please re-login.");
   }
+
+  // Step 1: Resolve Convex orgId with helper (covers most cases and handles legacy tokens)
+  let resolvedUserOrgId: Id<"organizations"> | null = null;
+  try {
+    resolvedUserOrgId = await getUserOrgId(ctx);
+  } catch (error) {
+    console.warn("[Security] Unable to resolve user org via helper", {
+      auth0Id: identity.subject,
+      requestedOrgId,
+      error,
+    });
+  }
+
+  if (resolvedUserOrgId) {
+    if (resolvedUserOrgId !== requestedOrgId) {
+      console.warn("[Security] Unauthorized org access attempt (resolved id mismatch)", {
+        auth0Id: identity.subject,
+        resolvedUserOrgId,
+        requestedOrgId,
+      });
+      throw new Error("Unauthorized: Cannot access other organization's data");
+    }
+    return;
+  }
+
+  // Step 2: Handle claims that might already contain Convex orgId
+  if (typeof rawClaimOrgId === "string" && !rawClaimOrgId.startsWith("org_")) {
+    const normalizedOrgId =
+      typeof ctx.db.normalizeId === "function" ? (ctx.db.normalizeId as any).call(ctx.db, "organizations", rawClaimOrgId) : null;
+
+    if (normalizedOrgId) {
+      if (normalizedOrgId !== requestedOrgId) {
+        console.warn("[Security] Unauthorized org access attempt (normalized claim mismatch)", {
+          auth0Id: identity.subject,
+          claimOrgId: rawClaimOrgId,
+          normalizedOrgId,
+          requestedOrgId,
+        });
+        throw new Error("Unauthorized: Cannot access other organization's data");
+      }
+      return;
+    }
+  }
+
+  // Step 3: Compare Auth0 org identifier when organization has mapping stored
+  if (org.auth0OrgId && org.auth0OrgId === rawClaimOrgId) {
+    return;
+  }
+
+  console.warn("[Security] Unauthorized org access attempt (final check)", {
+    auth0Id: identity.subject,
+    rawClaimOrgId,
+    orgAuth0OrgId: org.auth0OrgId,
+    requestedOrgId,
+  });
+  throw new Error("Unauthorized: Cannot access other organization's data");
 }
 
 /**
