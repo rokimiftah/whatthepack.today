@@ -562,4 +562,104 @@ export const checkSlugAvailability = query({
     };
   },
 });
+
+/**
+ * Ensure Auth0 Organization exists for a slug and that the DB connection is enabled BEFORE login.
+ * This is called from the subdomain (unauthenticated pre-login) to prevent
+ * "no connections enabled for the organization" errors.
+ */
+export const ensureOrgLoginReady = action({
+  args: { slug: v.string(), storeName: v.optional(v.string()) },
+  handler: async (_ctx, args) => {
+    const slugRegex = /^[a-z0-9-]+$/;
+    const slug = args.slug.toLowerCase().trim();
+    if (!slugRegex.test(slug) || slug.length < 3 || slug.length > 48) {
+      throw new ConvexError("Invalid slug");
+    }
+
+    if (!checkRateLimit(`prelogin:${slug}`, 10, 60 * 60 * 1000)) {
+      throw new ConvexError("Too many attempts, slow down");
+    }
+
+    const mgmt = getManagementClient();
+
+    // 1) Ensure Auth0 Organization exists (idempotent)
+    let auth0OrgId: string | undefined;
+    try {
+      let list: any;
+      try {
+        list = await (mgmt.organizations as any).getAll({ name: slug, per_page: 5 });
+      } catch {
+        list = await (mgmt.organizations as any).getAll({ per_page: 50 });
+      }
+      const existing = Array.isArray(list?.data) ? list.data : Array.isArray(list) ? list : [];
+      const found = existing.find((o: any) => o?.name === slug);
+      if (found?.id) {
+        auth0OrgId = found.id;
+      }
+    } catch {}
+
+    if (!auth0OrgId) {
+      try {
+        const created = await (mgmt.organizations as any).create({
+          name: slug,
+          display_name: args.storeName || slug,
+          metadata: { convex_org_slug: slug, created_via: "prelogin" },
+        });
+        auth0OrgId = created?.id || created?.data?.id;
+      } catch (_e: any) {
+        // 409 or other → try to refetch by name
+        try {
+          const list = await (mgmt.organizations as any).getAll({ name: slug, per_page: 5 });
+          const existing = Array.isArray(list?.data) ? list.data : Array.isArray(list) ? list : [];
+          const found = existing.find((o: any) => o?.name === slug);
+          if (found?.id) auth0OrgId = found.id;
+        } catch {}
+      }
+    }
+
+    if (!auth0OrgId) {
+      throw new ConvexError("Failed to ensure Auth0 organization");
+    }
+
+    // 2) Ensure DB connection is enabled for the Organization (idempotent)
+    let connectionId = process.env.AUTH0_CONNECTION_ID;
+    try {
+      if (!connectionId) {
+        const conns = await (mgmt.connections as any).getAll({ name: "Username-Password-Authentication", per_page: 5 });
+        const arr = Array.isArray(conns?.data) ? conns.data : Array.isArray(conns) ? conns : [];
+        if (arr.length > 0) connectionId = arr[0].id;
+      }
+    } catch {}
+
+    if (!connectionId) {
+      throw new ConvexError("DB connection not found");
+    }
+
+    let enabled = false;
+    try {
+      const connectionsClient = (mgmt.organizations as any)?.connections;
+      if (connectionsClient?.create) {
+        await connectionsClient.create(auth0OrgId, { connection_id: connectionId, assign_membership_on_login: false });
+        enabled = true;
+      }
+    } catch {}
+
+    if (!enabled) {
+      try {
+        if (typeof (mgmt.organizations as any).addConnection === "function") {
+          await (mgmt.organizations as any).addConnection({ id: auth0OrgId }, { connection_id: connectionId });
+          enabled = true;
+        }
+      } catch {}
+    }
+
+    if (!enabled) {
+      // Another agent may have done it or Auth0 disallows duplicate; treat as best-effort
+      // We won't throw to avoid blocking login
+    }
+
+    return { ensured: true, auth0OrgId };
+  },
+});
 // Force rebuild

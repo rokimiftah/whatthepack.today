@@ -17,7 +17,7 @@ import {
   IconWorld,
   IconX,
 } from "@tabler/icons-react";
-import { Authenticated, Unauthenticated, useConvexAuth, useMutation, useQuery } from "convex/react";
+import { Authenticated, Unauthenticated, useAction, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useLocation } from "wouter";
 
 import { buildOrgUrl, getCurrentSubdomain, isReservedSubdomain } from "@shared/utils/subdomain";
@@ -609,6 +609,7 @@ function TenantRoot() {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const [location, navigate] = useLocation();
   const syncCurrentUser = useMutation(api.users.syncCurrentUser);
+  const ensureOrgLoginReady = useAction(api.onboarding.ensureOrgLoginReady);
   const [userSyncStatus, setUserSyncStatus] = useState<"idle" | "pending" | "done">("idle");
 
   // SECURITY: First, validate that the subdomain actually exists in database
@@ -647,15 +648,22 @@ function TenantRoot() {
     // If not authenticated, auto-redirect to Auth0 login with organization
     if (!isAuthenticated && subdomainValidation !== null) {
       const auth0OrgId = (subdomainValidation as any).auth0OrgId;
-      console.log("[TenantRoot] Not authenticated, redirecting to Auth0 login...");
-      console.log("[TenantRoot] Organization ID:", auth0OrgId);
-
-      void loginWithRedirect({
-        authorizationParams: auth0OrgId ? { organization: auth0OrgId } : undefined,
-      });
+      console.log("[TenantRoot] Not authenticated, preparing org connection then redirecting to Auth0 login...");
+      (async () => {
+        try {
+          if (subdomain) {
+            await ensureOrgLoginReady({ slug: subdomain });
+          }
+        } catch (e) {
+          console.warn("[TenantRoot] ensureOrgLoginReady failed", (e as any)?.message || e);
+        }
+        void loginWithRedirect({
+          authorizationParams: auth0OrgId ? { organization: auth0OrgId } : undefined,
+        });
+      })();
       return;
     }
-  }, [isLoading, isAuthenticated, subdomainValidation, loginWithRedirect]);
+  }, [isLoading, isAuthenticated, subdomainValidation, loginWithRedirect, ensureOrgLoginReady, subdomain]);
 
   useEffect(() => {
     if (!isAuthenticated || isLoading) return;
