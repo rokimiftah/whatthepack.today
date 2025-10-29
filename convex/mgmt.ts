@@ -307,25 +307,37 @@ export const inviteStaff = action({
       // Ensure Auth0 Organization exists and sync its ID back to Convex if missing
       if (!auth0OrgId) {
         try {
-          // Try find by slug/name
-          let list: any;
-          try {
-            list = await (mgmt.organizations as any).getAll({ name: org.slug, per_page: 5 });
-          } catch {
-            list = await (mgmt.organizations as any).getAll({ per_page: 50 });
-          }
-          const arr = Array.isArray(list?.data) ? list.data : Array.isArray(list) ? list : [];
-          const found = arr.find((o: any) => o?.name === org.slug || o?.metadata?.convex_org_slug === org.slug);
-          if (found?.id) auth0OrgId = found.id;
+          const domain = getManagementDomain();
+          const token = await getManagementAccessToken();
 
-          // If still not found, create a new Auth0 Organization
-          if (!auth0OrgId) {
-            const created = await (mgmt.organizations as any).create({
+          // Try create; if exists, fall back to list & find
+          const createResp = await fetch(`https://${domain}/api/v2/organizations`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
               name: org.slug,
               display_name: org.name || org.slug,
               metadata: { convex_org_slug: org.slug, created_via: "inviteStaff" },
-            });
-            auth0OrgId = created?.id || created?.data?.id;
+            }),
+          });
+
+          if (createResp.ok) {
+            const created = await createResp.json();
+            auth0OrgId = created?.id;
+          } else if (createResp.status === 409 || createResp.status === 400) {
+            // List and find by name/metadata
+            let page = 0;
+            while (!auth0OrgId && page < 10) {
+              const listResp = await fetch(`https://${domain}/api/v2/organizations?per_page=50&page=${page}`, {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              const listJson: any = (await listResp.json().catch(() => ({}))) || [];
+              const arr = Array.isArray(listJson) ? listJson : Array.isArray(listJson?.organizations) ? listJson.organizations : [];
+              const found = arr.find((o: any) => o?.name === org.slug || o?.metadata?.convex_org_slug === org.slug);
+              if (found?.id) auth0OrgId = found.id;
+              page += 1;
+              if (!listResp.ok || arr.length === 0) break;
+            }
           }
 
           if (!auth0OrgId) throw new Error("Failed to ensure Auth0 organization");
@@ -333,28 +345,26 @@ export const inviteStaff = action({
           // Persist back to Convex
           await ctx.runMutation(internal.organizations.updateAuth0OrgId, { orgId: args.orgId, auth0OrgId });
 
-          // Best-effort: ensure DB connection is enabled for this organization
+          // Best-effort: enable DB connection via raw API
           try {
             let connectionId = process.env.AUTH0_CONNECTION_ID;
             if (!connectionId) {
-              const cons = await (mgmt.connections as any).getAll({ name: "Username-Password-Authentication", per_page: 5 });
-              const carr = Array.isArray(cons?.data) ? cons.data : Array.isArray(cons) ? cons : [];
+              const consResp = await fetch(`https://${domain}/api/v2/connections?strategy=auth0&name=Username-Password-Authentication`, {
+                headers: { Authorization: `Bearer ${token}` },
+              });
+              const consJson: any = await consResp.json().catch(() => ({}));
+              const carr = Array.isArray(consJson) ? consJson : [];
               if (carr.length > 0) connectionId = carr[0].id;
             }
             if (connectionId) {
-              const connectionsClient = (mgmt.organizations as any)?.connections;
-              try {
-                if (connectionsClient?.create) {
-                  await connectionsClient.create(auth0OrgId, { connection_id: connectionId, assign_membership_on_login: false });
-                } else if (typeof (mgmt.organizations as any).addConnection === "function") {
-                  await (mgmt.organizations as any).addConnection({ id: auth0OrgId }, { connection_id: connectionId });
-                }
-              } catch (_) {
-                // ignore if already enabled
-              }
+              await fetch(`https://${domain}/api/v2/organizations/${auth0OrgId}/enabled_connections`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ connection_id: connectionId, assign_membership_on_login: false }),
+              }).catch(() => {});
             }
           } catch (e) {
-            console.warn("[inviteStaff] Best-effort enable DB connection failed:", e);
+            console.warn("[inviteStaff] Best-effort enable DB connection (raw) failed:", e);
           }
         } catch (e: any) {
           console.error("[inviteStaff] Failed to ensure Auth0 org:", e?.message || e);
