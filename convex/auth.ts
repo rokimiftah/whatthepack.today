@@ -264,6 +264,23 @@ export const getUserOrgId = async (ctx: any): Promise<Id<"organizations">> => {
   const claimValue = customClaims["https://whatthepack.today/orgId"];
 
   if (!claimValue) {
+    // Fallback: resolve org from DB by user linkage or ownership
+    // 1) If user record has orgId, use it
+    try {
+      const user = await ctx.db
+        .query("users")
+        .withIndex("by_auth0Id", (q: any) => q.eq("auth0Id", (identity as any).subject))
+        .first();
+      if (user?.orgId) return user.orgId as Id<"organizations">;
+    } catch {}
+    // 2) If user is owner of any org, use that org
+    try {
+      const org = await ctx.db
+        .query("organizations")
+        .withIndex("by_ownerAuth0Id", (q: any) => q.eq("ownerAuth0Id", (identity as any).subject))
+        .first();
+      if (org?._id) return org._id as Id<"organizations">;
+    } catch {}
     throw new Error("Organization ID not found in token. User may not be assigned to an organization.");
   }
 
