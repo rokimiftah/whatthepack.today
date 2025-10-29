@@ -231,23 +231,15 @@ export const requireRole = async (ctx: any, orgId: any, allowedRoles: string[]) 
     throw new Error("Organization not found");
   }
 
-  const normalizedClaimOrgId =
-    typeof ctx.db?.normalizeId === "function" ? ctx.db.normalizeId("organizations", userAuth0OrgId) : null;
-  if (!fallbackOwner && normalizedClaimOrgId) {
-    if (normalizedClaimOrgId !== orgId) {
-      console.error("[requireRole] Claim orgId does not match requested orgId", {
-        claim: userAuth0OrgId,
-        normalizedClaimOrgId,
-        requestedOrgId: orgId,
-      });
-      throw new Error("Access denied. User is not a member of this organization");
-    }
-
+  if (!fallbackOwner && userAuth0OrgId) {
+    // If token has Auth0 org id, ensure it matches org's auth0OrgId if present
     if (org.auth0OrgId && org.auth0OrgId !== userAuth0OrgId) {
-      console.warn("[requireRole] Claim contains Convex orgId instead of Auth0 org id. Consider refreshing JWT.", {
+      console.error("[requireRole] Org mismatch:", {
         userAuth0OrgId,
         orgAuth0OrgId: org.auth0OrgId,
+        convexOrgId: orgId,
       });
+      throw new Error("Access denied. User does not belong to this organization");
     }
   } else if (!fallbackOwner && org.auth0OrgId && org.auth0OrgId !== userAuth0OrgId) {
     console.error("[requireRole] Org mismatch:", {
