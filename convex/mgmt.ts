@@ -302,10 +302,64 @@ export const inviteStaff = action({
         console.error("[inviteStaff] Unexpected create user response shape:", newUser);
         throw new Error("Auth0 user_id missing after user creation");
       }
-      const auth0OrgId = org.auth0OrgId;
+      let auth0OrgId = org.auth0OrgId as string | undefined;
 
+      // Ensure Auth0 Organization exists and sync its ID back to Convex if missing
       if (!auth0OrgId) {
-        throw new Error("Organization is missing auth0OrgId. Please re-provision the tenant.");
+        try {
+          // Try find by slug/name
+          let list: any;
+          try {
+            list = await (mgmt.organizations as any).getAll({ name: org.slug, per_page: 5 });
+          } catch {
+            list = await (mgmt.organizations as any).getAll({ per_page: 50 });
+          }
+          const arr = Array.isArray(list?.data) ? list.data : Array.isArray(list) ? list : [];
+          const found = arr.find((o: any) => o?.name === org.slug || o?.metadata?.convex_org_slug === org.slug);
+          if (found?.id) auth0OrgId = found.id;
+
+          // If still not found, create a new Auth0 Organization
+          if (!auth0OrgId) {
+            const created = await (mgmt.organizations as any).create({
+              name: org.slug,
+              display_name: org.name || org.slug,
+              metadata: { convex_org_slug: org.slug, created_via: "inviteStaff" },
+            });
+            auth0OrgId = created?.id || created?.data?.id;
+          }
+
+          if (!auth0OrgId) throw new Error("Failed to ensure Auth0 organization");
+
+          // Persist back to Convex
+          await ctx.runMutation(internal.organizations.updateAuth0OrgId, { orgId: args.orgId, auth0OrgId });
+
+          // Best-effort: ensure DB connection is enabled for this organization
+          try {
+            let connectionId = process.env.AUTH0_CONNECTION_ID;
+            if (!connectionId) {
+              const cons = await (mgmt.connections as any).getAll({ name: "Username-Password-Authentication", per_page: 5 });
+              const carr = Array.isArray(cons?.data) ? cons.data : Array.isArray(cons) ? cons : [];
+              if (carr.length > 0) connectionId = carr[0].id;
+            }
+            if (connectionId) {
+              const connectionsClient = (mgmt.organizations as any)?.connections;
+              try {
+                if (connectionsClient?.create) {
+                  await connectionsClient.create(auth0OrgId, { connection_id: connectionId, assign_membership_on_login: false });
+                } else if (typeof (mgmt.organizations as any).addConnection === "function") {
+                  await (mgmt.organizations as any).addConnection({ id: auth0OrgId }, { connection_id: connectionId });
+                }
+              } catch (_) {
+                // ignore if already enabled
+              }
+            }
+          } catch (e) {
+            console.warn("[inviteStaff] Best-effort enable DB connection failed:", e);
+          }
+        } catch (e: any) {
+          console.error("[inviteStaff] Failed to ensure Auth0 org:", e?.message || e);
+          throw new Error("Organization is missing auth0OrgId. Please re-provision the tenant.");
+        }
       }
 
       // 2. Add user to organization
