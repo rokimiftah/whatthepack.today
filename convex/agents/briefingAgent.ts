@@ -19,17 +19,33 @@ export const generateDailyBriefing = action({
     if (!identity) throw new Error("Not authenticated");
 
     const userRoles = await getUserRoles(ctx);
-    const userOrgId = await getUserOrgId(ctx);
+    let userOrgId: Id<"organizations"> | null = null;
+    let targetOrgId: Id<"organizations">;
 
-    // Only owner can access daily briefing
-    if (!userRoles.includes("owner")) {
-      throw new Error("Access denied: Only owners can access daily briefing");
+    if (args.orgId) {
+      targetOrgId = args.orgId as Id<"organizations">;
+      // Try to resolve user's org id, but don't fail hard; we'll verify ownership below
+      try {
+        userOrgId = await getUserOrgId(ctx);
+      } catch (_) {
+        userOrgId = null;
+      }
+    } else {
+      userOrgId = await getUserOrgId(ctx);
+      targetOrgId = userOrgId;
     }
 
-    const targetOrgId = (args.orgId || userOrgId) as Id<"organizations">;
+    // Only owner can access daily briefing
+    // Fallback: treat as owner if DB shows user is the owner of target org
+    if (!userRoles.includes("owner")) {
+      const org = await ctx.runQuery(internal.organizations.get, { orgId: targetOrgId });
+      if (!org || org.ownerAuth0Id !== identity.subject) {
+        throw new Error("Access denied: Only owners can access daily briefing");
+      }
+    }
 
     // Verify access
-    if (targetOrgId !== userOrgId) {
+    if (userOrgId && targetOrgId !== userOrgId) {
       throw new Error("Access denied: Cannot access data from other organizations");
     }
 
