@@ -334,6 +334,12 @@ export const checkSlugAvailability = query({
       return { available: true, reason: "current" as const };
     }
 
+    // Fresh signup case: org was just created for this user, but JWT doesn't have orgId yet.
+    // Treat an org owned by the current Auth0 user as "current" to avoid false "taken" during onboarding.
+    if (existing.ownerAuth0Id === identity.subject) {
+      return { available: true, reason: "current" as const };
+    }
+
     return { available: false, reason: "taken" as const };
   },
 });
