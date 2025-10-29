@@ -64,7 +64,7 @@ type SlugAvailabilityReason = "available" | "current" | "taken" | "invalid_forma
 
 export default function OnboardingPage() {
   const { isAuthenticated, isLoading } = useConvexAuth();
-  const { loginWithRedirect, user, logout } = useAuth0();
+  const { loginWithRedirect, user } = useAuth0();
   const [, navigate] = useLocation();
   const subdomain = getCurrentSubdomain();
   const platformHost = typeof window !== "undefined" ? window.location.hostname : null;
@@ -147,6 +147,7 @@ export default function OnboardingPage() {
   const setSlugMutation = useMutation(api.organizations.setSlug);
   const updateOrgMutation = useMutation(api.organizations.update);
   const completeOnboardingAction = useAction(api.onboarding.completeOnboarding);
+  const ensureOrgLoginReady = useAction(api.onboarding.ensureOrgLoginReady);
   const resendVerificationEmail = useAction(api.mgmt.resendVerificationEmail);
 
   const theme = useMantineTheme();
@@ -385,7 +386,7 @@ export default function OnboardingPage() {
 
     try {
       if (noOrg) {
-        await completeOnboardingAction({
+        const result = await completeOnboardingAction({
           storeName: trimmedName,
           slug: finalSlug,
         });
@@ -397,12 +398,25 @@ export default function OnboardingPage() {
             window.location.hostname.includes("localhost"));
 
         if (!isLocalhost && finalSlug !== subdomain && typeof window !== "undefined") {
-          const orgUrl = buildOrgUrl(finalSlug, "/");
+          const orgUrl = buildOrgUrl(finalSlug, "/auth/callback");
 
-          await logout({
-            logoutParams: {
-              returnTo: orgUrl,
-            },
+          try {
+            await ensureOrgLoginReady({ slug: finalSlug });
+          } catch (e) {
+            console.warn("[Onboarding] ensureOrgLoginReady failed", (e as any)?.message || e);
+          }
+
+          // Silent re-auth into the new org to avoid showing login page again
+          const authorizationParams: Record<string, string> = {
+            prompt: "none",
+            redirect_uri: orgUrl,
+          };
+          if ((result as any)?.auth0OrgId) {
+            authorizationParams.organization = (result as any).auth0OrgId as string;
+          }
+          await loginWithRedirect({
+            authorizationParams,
+            appState: { returnTo: "/dashboard" },
           });
           return;
         }

@@ -79,7 +79,16 @@ export const completeOnboarding = action({
     storeName: v.string(),
     slug: v.string(),
   },
-  handler: async (ctx, args): Promise<{ success: boolean; orgId: Id<"organizations">; slug: string; userId: Id<"users"> }> => {
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    success: boolean;
+    orgId: Id<"organizations">;
+    slug: string;
+    userId: Id<"users">;
+    auth0OrgId?: string;
+  }> => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
       throw new Error("Not authenticated");
@@ -365,6 +374,7 @@ export const completeOnboarding = action({
       orgId,
       slug: args.slug,
       userId,
+      auth0OrgId,
     };
   },
 });

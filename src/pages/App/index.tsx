@@ -62,7 +62,7 @@ function MarketingLanding() {
   const normalizedSlug = sanitizeSlug(slugValue);
   const slugIsReserved = normalizedSlug ? isReservedSubdomain(normalizedSlug) : false;
 
-  // Auth0 signup for new users (signup form only)
+  // Auth0 signup for new users (keep subdomain selection in onboarding)
   const handleAuth0Signup = () => {
     void loginWithRedirect({
       authorizationParams: {
@@ -657,9 +657,12 @@ function TenantRoot() {
         } catch (e) {
           console.warn("[TenantRoot] ensureOrgLoginReady failed", (e as any)?.message || e);
         }
-        void loginWithRedirect({
-          authorizationParams: auth0OrgId ? { organization: auth0OrgId } : undefined,
-        });
+        const search = typeof window !== "undefined" ? window.location.search : "";
+        const isSignupIntent = search.includes("action=signup");
+        const authorizationParams: Record<string, string> = {};
+        if (auth0OrgId) authorizationParams.organization = auth0OrgId;
+        if (isSignupIntent) authorizationParams.screen_hint = "signup";
+        void loginWithRedirect({ authorizationParams });
       })();
       return;
     }
