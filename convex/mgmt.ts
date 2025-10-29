@@ -254,15 +254,36 @@ export const inviteStaff = action({
       // 1. Create user in Auth0 (DB connection requires a password)
       let newUser: any;
       try {
-        newUser = await mgmt.users.create({
+        // Detect whether the DB connection requires username; if not, omit username to avoid 400
+        let requiresUsername = false;
+        try {
+          const cons = await (mgmt.connections as any).getAll({ name: "Username-Password-Authentication" });
+          const list = Array.isArray(cons?.data) ? cons.data : Array.isArray(cons) ? cons : [];
+          const db = list[0];
+          requiresUsername = Boolean(db?.options?.requires_username || db?.requires_username);
+        } catch {}
+
+        const payload: any = {
           email: args.email,
           connection: "Username-Password-Authentication",
-          username: args.username,
           password: generateTempPassword(),
           email_verified: false,
-          // Do NOT auto-send verification email; we'll mark verified on password change
           verify_email: false,
-        } as any);
+        };
+        if (requiresUsername && args.username) payload.username = args.username;
+
+        try {
+          newUser = await mgmt.users.create(payload as any);
+        } catch (err: any) {
+          const msg = err?.message || "";
+          // If server complains about username on a connection without requires_username, retry without username
+          if (msg.includes("Cannot set username for connection without requires_username") || err?.statusCode === 400) {
+            delete payload.username;
+            newUser = await mgmt.users.create(payload as any);
+          } else {
+            throw err;
+          }
+        }
       } catch (e: any) {
         // If user already exists, fetch the user and continue
         const message = e?.message || "";
