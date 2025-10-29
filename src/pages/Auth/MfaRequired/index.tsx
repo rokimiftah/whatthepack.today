@@ -6,8 +6,9 @@ import { IconArrowRight, IconShieldCheck, IconShieldExclamation } from "@tabler/
 import { useConvexAuth, useQuery } from "convex/react";
 import { useLocation } from "wouter";
 
-import { api } from "../../../../convex/_generated/api";
 import { getCurrentSubdomain } from "@shared/utils/subdomain";
+
+import { api } from "../../../../convex/_generated/api";
 
 export default function MfaRequiredPage() {
   const { isAuthenticated, isLoading } = useConvexAuth();

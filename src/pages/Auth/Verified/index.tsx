@@ -5,12 +5,13 @@ import { useEffect } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
 import { Center, Loader, Stack, Text } from "@mantine/core";
 import { IconCircleCheck } from "@tabler/icons-react";
-import { useLocation } from "wouter";
 import { useQuery } from "convex/react";
+import { useLocation } from "wouter";
 
 import { getCurrentSubdomain } from "@shared/utils/subdomain";
 
 import { api } from "../../../../convex/_generated/api";
+
 /**
  * Email Verification Success Page
  *
