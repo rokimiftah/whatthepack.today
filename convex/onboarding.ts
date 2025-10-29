@@ -243,6 +243,104 @@ export const completeOnboarding = action({
         auth0OrgId,
       });
       console.log("[Onboarding] Auth0 org_id linked in Convex");
+
+      // Enable Username-Password-Authentication connection for this Organization (idempotent best-effort)
+      try {
+        let connectionId = process.env.AUTH0_CONNECTION_ID;
+
+        if (!connectionId) {
+          console.log("[Onboarding] AUTH0_CONNECTION_ID not set, fetching DB connection by name...");
+          try {
+            const connections = await (mgmt.connections as any).getAll({ name: "Username-Password-Authentication" });
+            if (connections?.data && connections.data.length > 0) {
+              connectionId = connections.data[0].id;
+              console.log("[Onboarding] Found connection ID:", connectionId);
+            } else if (Array.isArray(connections) && connections.length > 0) {
+              connectionId = connections[0].id;
+              console.log("[Onboarding] Found connection ID:", connectionId);
+            } else {
+              console.warn("[Onboarding] Username-Password-Authentication connection not found");
+            }
+          } catch (fetchErr: any) {
+            console.warn("[Onboarding] Failed to fetch DB connections:", fetchErr?.message || fetchErr);
+          }
+        }
+
+        if (connectionId) {
+          let enabled = false;
+
+          // Method 1: SDK organizations.connections.create
+          try {
+            const connectionsClient = (mgmt.organizations as any)?.connections;
+            if (connectionsClient?.create) {
+              await connectionsClient.create(auth0OrgId, {
+                connection_id: connectionId,
+                assign_membership_on_login: false,
+              });
+              enabled = true;
+              console.log("[Onboarding] ✅ Org connection enabled (SDK method 1)");
+            }
+          } catch (e: any) {
+            console.log("[Onboarding] SDK method 1 failed:", e?.message || e);
+          }
+
+          // Method 2: SDK organizations.addConnection
+          if (!enabled) {
+            try {
+              if (typeof (mgmt.organizations as any).addConnection === "function") {
+                await (mgmt.organizations as any).addConnection({ id: auth0OrgId }, { connection_id: connectionId });
+                enabled = true;
+                console.log("[Onboarding] ✅ Org connection enabled (SDK method 2)");
+              }
+            } catch (e: any) {
+              console.log("[Onboarding] SDK method 2 failed:", e?.message || e);
+            }
+          }
+
+          // Method 3: Raw API
+          if (!enabled) {
+            try {
+              const managementDomain = process.env.AUTH0_TENANT_DOMAIN ?? process.env.AUTH0_DOMAIN;
+              if (!managementDomain) throw new Error("Missing Auth0 domain");
+              const tokenResp = await fetch(`https://${managementDomain}/oauth/token`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  client_id: process.env.AUTH0_MGMT_CLIENT_ID,
+                  client_secret: process.env.AUTH0_MGMT_CLIENT_SECRET,
+                  audience: `https://${managementDomain}/api/v2/`,
+                  grant_type: "client_credentials",
+                }),
+              });
+              if (!tokenResp.ok) throw new Error(`Token error ${tokenResp.status}`);
+              const { access_token } = (await tokenResp.json()) as { access_token: string };
+              const enableResp = await fetch(
+                `https://${managementDomain}/api/v2/organizations/${auth0OrgId}/enabled_connections`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${access_token}` },
+                  body: JSON.stringify({ connection_id: connectionId, assign_membership_on_login: false }),
+                },
+              );
+              if (enableResp.ok) {
+                enabled = true;
+                console.log("[Onboarding] ✅ Org connection enabled (raw API)");
+              } else {
+                const txt = await enableResp.text();
+                console.warn("[Onboarding] Raw API enable failed:", txt);
+              }
+            } catch (e: any) {
+              console.log("[Onboarding] Raw API method failed:", e?.message || e);
+            }
+          }
+
+          if (!enabled) {
+            console.warn("[Onboarding] ⚠️ Could not enable org DB connection. Check M2M scopes and connection ID.");
+          }
+        }
+      } catch (connErr: any) {
+        console.warn("[Onboarding] ⚠️ Enabling org connection failed:", connErr?.message || connErr);
+      }
     } catch (error: any) {
       console.error("[Onboarding] Failed to create Auth0 org:", error.message);
       // Continue anyway - Convex org is created

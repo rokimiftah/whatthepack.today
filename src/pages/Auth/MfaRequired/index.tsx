@@ -7,19 +7,26 @@ import { useConvexAuth, useQuery } from "convex/react";
 import { useLocation } from "wouter";
 
 import { api } from "../../../../convex/_generated/api";
+import { getCurrentSubdomain } from "@shared/utils/subdomain";
 
 export default function MfaRequiredPage() {
   const { isAuthenticated, isLoading } = useConvexAuth();
   const { loginWithRedirect, logout } = useAuth0();
   const [location, navigate] = useLocation();
+  const subdomain = getCurrentSubdomain();
+  const org = useQuery(api.organizations.getBySlug, subdomain ? { slug: subdomain } : "skip");
 
   const sessionMetadata = useQuery(api.auth.getSessionMetadata, isAuthenticated ? {} : "skip");
 
   useEffect(() => {
     if (!isAuthenticated && !isLoading) {
-      void loginWithRedirect();
+      const authorizationParams: Record<string, string> = {};
+      if (org && (org as any).auth0OrgId) {
+        authorizationParams.organization = (org as any).auth0OrgId as string;
+      }
+      void loginWithRedirect({ authorizationParams });
     }
-  }, [isAuthenticated, isLoading, loginWithRedirect]);
+  }, [isAuthenticated, isLoading, loginWithRedirect, org]);
 
   const mfaResolved = sessionMetadata !== undefined;
   const isOwnerWithoutMfa =
@@ -105,11 +112,13 @@ export default function MfaRequiredPage() {
                 variant="filled"
                 color="brand"
                 rightSection={<IconArrowRight size={16} />}
-                onClick={() =>
-                  loginWithRedirect({
-                    authorizationParams: { prompt: "login" },
-                  })
-                }
+                onClick={() => {
+                  const authorizationParams: Record<string, string> = { prompt: "login" };
+                  if (org && (org as any).auth0OrgId) {
+                    authorizationParams.organization = (org as any).auth0OrgId as string;
+                  }
+                  loginWithRedirect({ authorizationParams });
+                }}
               >
                 Reopen Auth0 login
               </Button>

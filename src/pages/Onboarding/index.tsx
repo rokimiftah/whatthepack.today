@@ -91,6 +91,7 @@ export default function OnboardingPage() {
     api.organizations.getForCurrentUser,
     isAuthenticated && subdomain ? fallbackOrgArgs : "skip",
   );
+  const orgBySlug = useQuery(api.organizations.getBySlug, subdomain ? { slug: subdomain } : "skip");
 
   const orgResult = organizationResult as OrgQueryResult;
   const fallbackResult = organizationFallbackResult as OrgQueryResult;
@@ -234,7 +235,17 @@ export default function OnboardingPage() {
         title="Sign in to continue"
         description="You need to sign in with your owner account to complete onboarding."
         actions={
-          <Button size="md" onClick={() => loginWithRedirect()}>
+          <Button
+            size="md"
+            onClick={() =>
+              loginWithRedirect({
+                authorizationParams:
+                  subdomain && orgBySlug && (orgBySlug as any).auth0OrgId
+                    ? { organization: (orgBySlug as any).auth0OrgId as string }
+                    : undefined,
+              })
+            }
+          >
             Sign in with Auth0
           </Button>
         }

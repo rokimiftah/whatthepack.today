@@ -6,7 +6,11 @@ import { useAuth0 } from "@auth0/auth0-react";
 import { Center, Loader, Stack, Text } from "@mantine/core";
 import { IconCircleCheck } from "@tabler/icons-react";
 import { useLocation } from "wouter";
+import { useQuery } from "convex/react";
 
+import { getCurrentSubdomain } from "@shared/utils/subdomain";
+
+import { api } from "../../../../convex/_generated/api";
 /**
  * Email Verification Success Page
  *
@@ -16,6 +20,8 @@ import { useLocation } from "wouter";
 export default function VerifiedPage() {
   const { isAuthenticated, isLoading, loginWithRedirect } = useAuth0();
   const [, navigate] = useLocation();
+  const subdomain = getCurrentSubdomain();
+  const org = useQuery(api.organizations.getBySlug, subdomain ? { slug: subdomain } : "skip");
 
   useEffect(() => {
     // If already authenticated, go to onboarding
@@ -33,6 +39,7 @@ export default function VerifiedPage() {
             redirect_uri: `${window.location.origin}/auth/callback`,
             // Use prompt: none to skip login screen if session exists
             prompt: "none",
+            ...(org && (org as any).auth0OrgId ? { organization: (org as any).auth0OrgId as string } : {}),
           },
           appState: {
             returnTo: "/onboarding",
@@ -42,6 +49,7 @@ export default function VerifiedPage() {
           loginWithRedirect({
             authorizationParams: {
               redirect_uri: `${window.location.origin}/auth/callback`,
+              ...(org && (org as any).auth0OrgId ? { organization: (org as any).auth0OrgId as string } : {}),
             },
             appState: {
               returnTo: "/onboarding",
@@ -52,7 +60,7 @@ export default function VerifiedPage() {
 
       return () => clearTimeout(timer);
     }
-  }, [isAuthenticated, isLoading, loginWithRedirect, navigate]);
+  }, [isAuthenticated, isLoading, loginWithRedirect, navigate, org]);
 
   return (
     <Center style={{ minHeight: "100vh", background: "#000" }}>
