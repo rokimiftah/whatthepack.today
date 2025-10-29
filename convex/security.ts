@@ -19,14 +19,27 @@ export async function requireOrgAccess(ctx: QueryCtx | MutationCtx, requestedOrg
   const customClaims = identity as any;
   const userAuth0OrgId = customClaims["https://whatthepack.today/orgId"];
 
-  if (!userAuth0OrgId) {
-    throw new Error("Access denied. No organization found in token. Please re-login.");
-  }
-
   // Get the requested organization from Convex
   const org = await ctx.db.get(requestedOrgId);
   if (!org) {
     throw new Error("Organization not found");
+  }
+
+  // Fallback for fresh tokens: allow if user owns or belongs to this org in DB
+  if (!userAuth0OrgId) {
+    // Owner check
+    if (org.ownerAuth0Id === identity.subject) {
+      return; // owner is allowed
+    }
+    // Membership check via users table
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_auth0Id", (q) => q.eq("auth0Id", identity.subject))
+      .first();
+    if (user?.orgId && user.orgId === requestedOrgId) {
+      return; // linked to this org
+    }
+    throw new Error("Access denied. No organization found in token. Please re-login.");
   }
 
   // Compare JWT's Auth0 org_id with Convex org's auth0OrgId
