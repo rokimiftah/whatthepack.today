@@ -591,82 +591,96 @@ export const ensureOrgLoginReady = action({
       throw new ConvexError("Too many attempts, slow down");
     }
 
-    const mgmt = getManagementClient();
+    const managementDomain = process.env.AUTH0_TENANT_DOMAIN ?? process.env.AUTH0_DOMAIN;
+    const clientId = process.env.AUTH0_MGMT_CLIENT_ID;
+    const clientSecret = process.env.AUTH0_MGMT_CLIENT_SECRET;
+    if (!managementDomain || !clientId || !clientSecret) {
+      console.warn("[ensureOrgLoginReady] Missing Auth0 mgmt config");
+      return { ensured: false };
+    }
 
-    // 1) Ensure Auth0 Organization exists (idempotent)
+    // Get token
+    let accessToken: string | undefined;
+    try {
+      const tokenResp = await fetch(`https://${managementDomain}/oauth/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          client_id: clientId,
+          client_secret: clientSecret,
+          audience: `https://${managementDomain}/api/v2/`,
+          grant_type: "client_credentials",
+        }),
+      });
+      if (tokenResp.ok) {
+        const json: any = await tokenResp.json();
+        accessToken = json?.access_token;
+      }
+    } catch (e) {
+      console.warn("[ensureOrgLoginReady] Token error", e);
+    }
+    if (!accessToken) return { ensured: false };
+
+    // 1) Ensure organization via raw API
     let auth0OrgId: string | undefined;
     try {
-      let list: any;
-      try {
-        list = await (mgmt.organizations as any).getAll({ name: slug, per_page: 5 });
-      } catch {
-        list = await (mgmt.organizations as any).getAll({ per_page: 50 });
-      }
-      const existing = Array.isArray(list?.data) ? list.data : Array.isArray(list) ? list : [];
-      const found = existing.find((o: any) => o?.name === slug);
-      if (found?.id) {
-        auth0OrgId = found.id;
-      }
-    } catch {}
-
-    if (!auth0OrgId) {
-      try {
-        const created = await (mgmt.organizations as any).create({
+      const createResp = await fetch(`https://${managementDomain}/api/v2/organizations`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({
           name: slug,
           display_name: args.storeName || slug,
           metadata: { convex_org_slug: slug, created_via: "prelogin" },
-        });
-        auth0OrgId = created?.id || created?.data?.id;
-      } catch (_e: any) {
-        // 409 or other → try to refetch by name
-        try {
-          const list = await (mgmt.organizations as any).getAll({ name: slug, per_page: 5 });
-          const existing = Array.isArray(list?.data) ? list.data : Array.isArray(list) ? list : [];
-          const found = existing.find((o: any) => o?.name === slug);
+        }),
+      });
+      if (createResp.ok) {
+        const created: any = await createResp.json();
+        auth0OrgId = created?.id;
+      } else if (createResp.status === 409 || createResp.status === 400) {
+        // List and find
+        let page = 0;
+        while (!auth0OrgId && page < 10) {
+          const listResp = await fetch(`https://${managementDomain}/api/v2/organizations?per_page=50&page=${page}`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          const listJson: any = (await listResp.json().catch(() => ({}))) || [];
+          const arr = Array.isArray(listJson) ? listJson : Array.isArray(listJson?.organizations) ? listJson.organizations : [];
+          const found = arr.find((o: any) => o?.name === slug || o?.metadata?.convex_org_slug === slug);
           if (found?.id) auth0OrgId = found.id;
-        } catch {}
+          if (!listResp.ok || arr.length === 0) break;
+          page += 1;
+        }
       }
+    } catch (e) {
+      console.warn("[ensureOrgLoginReady] ensure org error", e);
     }
 
     if (!auth0OrgId) {
-      throw new ConvexError("Failed to ensure Auth0 organization");
+      console.warn("[ensureOrgLoginReady] Could not ensure org for slug", slug);
+      return { ensured: false };
     }
 
-    // 2) Ensure DB connection is enabled for the Organization (idempotent)
-    let connectionId = process.env.AUTH0_CONNECTION_ID;
+    // 2) Ensure DB connection enabled (best-effort)
     try {
+      let connectionId = process.env.AUTH0_CONNECTION_ID;
       if (!connectionId) {
-        const conns = await (mgmt.connections as any).getAll({ name: "Username-Password-Authentication", per_page: 5 });
-        const arr = Array.isArray(conns?.data) ? conns.data : Array.isArray(conns) ? conns : [];
-        if (arr.length > 0) connectionId = arr[0].id;
+        const consResp = await fetch(
+          `https://${managementDomain}/api/v2/connections?strategy=auth0&name=Username-Password-Authentication`,
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+        );
+        const consJson: any = await consResp.json().catch(() => ({}));
+        const carr = Array.isArray(consJson) ? consJson : [];
+        if (carr.length > 0) connectionId = carr[0].id;
       }
-    } catch {}
-
-    if (!connectionId) {
-      throw new ConvexError("DB connection not found");
-    }
-
-    let enabled = false;
-    try {
-      const connectionsClient = (mgmt.organizations as any)?.connections;
-      if (connectionsClient?.create) {
-        await connectionsClient.create(auth0OrgId, { connection_id: connectionId, assign_membership_on_login: false });
-        enabled = true;
+      if (connectionId) {
+        await fetch(`https://${managementDomain}/api/v2/organizations/${auth0OrgId}/enabled_connections`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+          body: JSON.stringify({ connection_id: connectionId, assign_membership_on_login: false }),
+        });
       }
-    } catch {}
-
-    if (!enabled) {
-      try {
-        if (typeof (mgmt.organizations as any).addConnection === "function") {
-          await (mgmt.organizations as any).addConnection({ id: auth0OrgId }, { connection_id: connectionId });
-          enabled = true;
-        }
-      } catch {}
-    }
-
-    if (!enabled) {
-      // Another agent may have done it or Auth0 disallows duplicate; treat as best-effort
-      // We won't throw to avoid blocking login
+    } catch (e) {
+      console.warn("[ensureOrgLoginReady] enable connection failed", e);
     }
 
     return { ensured: true, auth0OrgId };

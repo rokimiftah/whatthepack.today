@@ -332,7 +332,11 @@ export const inviteStaff = action({
                 headers: { Authorization: `Bearer ${token}` },
               });
               const listJson: any = (await listResp.json().catch(() => ({}))) || [];
-              const arr = Array.isArray(listJson) ? listJson : Array.isArray(listJson?.organizations) ? listJson.organizations : [];
+              const arr = Array.isArray(listJson)
+                ? listJson
+                : Array.isArray(listJson?.organizations)
+                  ? listJson.organizations
+                  : [];
               const found = arr.find((o: any) => o?.name === org.slug || o?.metadata?.convex_org_slug === org.slug);
               if (found?.id) auth0OrgId = found.id;
               page += 1;
@@ -349,9 +353,12 @@ export const inviteStaff = action({
           try {
             let connectionId = process.env.AUTH0_CONNECTION_ID;
             if (!connectionId) {
-              const consResp = await fetch(`https://${domain}/api/v2/connections?strategy=auth0&name=Username-Password-Authentication`, {
-                headers: { Authorization: `Bearer ${token}` },
-              });
+              const consResp = await fetch(
+                `https://${domain}/api/v2/connections?strategy=auth0&name=Username-Password-Authentication`,
+                {
+                  headers: { Authorization: `Bearer ${token}` },
+                },
+              );
               const consJson: any = await consResp.json().catch(() => ({}));
               const carr = Array.isArray(consJson) ? consJson : [];
               if (carr.length > 0) connectionId = carr[0].id;
