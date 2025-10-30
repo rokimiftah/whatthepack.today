@@ -22,7 +22,7 @@ export const sendStaffInvite = action({
     if (!org) throw new Error("Organization not found");
 
     const to = args.email;
-    const subject = `You're invited to ${org.name} on WhatThePack.today`;
+    const subject = `You're Invited to ${org.name} on What The Pack`;
     const staffName = args.name || to.split("@")[0];
     const loginUrl = `https://${org.slug}.whatthepack.today/login`;
 
@@ -68,61 +68,94 @@ export const sendStockAlert = action({
     const subject = `🚨 CRITICAL STOCK ALERT - ${args.productSku} (${args.productName})`;
 
     const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charSet="utf-8" />
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #e5e7eb; background: #0b0b0b; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: #7f1d1d; color: white; padding: 16px; border-radius: 8px; }
-            .content { background: #161616; padding: 16px; border-radius: 8px; margin-top: 8px; }
-            .button { display: inline-block; background: #e5e7eb; color: #111827; padding: 10px 16px; text-decoration: none; border-radius: 6px; margin-top: 12px; font-weight: 600; }
-            .footer { text-align: center; color: #9ca3af; font-size: 12px; margin-top: 16px; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1 style="margin: 0;">CRITICAL STOCK ALERT</h1>
-              <p style="margin: 4px 0 0 0; opacity: 0.85;">${org.name}</p>
-            </div>
-            <div class="content">
-              <p><strong>Product:</strong> ${args.productName} (${args.productSku})</p>
-              <p><strong>Current Stock:</strong> ${args.currentStock}</p>
-              <p><strong>Reported By:</strong> ${args.reportedBy}</p>
-              <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
-              <a class="button" href="https://${org.slug}.whatthepack.today/inventory">View Inventory</a>
-            </div>
-            <p class="footer">This is an automated notification from WhatThePack.today</p>
-          </div>
-        </body>
-      </html>
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        line-height: 1.6;
+        color: #e5e7eb;
+        background: #0b0b0b;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .header {
+        background: #7f1d1d;
+        color: white;
+        padding: 16px;
+        border-radius: 8px;
+      }
+      .content {
+        background: #161616;
+        padding: 16px;
+        border-radius: 8px;
+        margin-top: 8px;
+      }
+      .button {
+        display: inline-block;
+        background: #e5e7eb;
+        color: #111827;
+        padding: 10px 16px;
+        text-decoration: none;
+        border-radius: 6px;
+        margin-top: 12px;
+        font-weight: 600;
+      }
+      .footer {
+        text-align: center;
+        color: #9ca3af;
+        font-size: 12px;
+        margin-top: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1 style="margin: 0">CRITICAL STOCK ALERT</h1>
+        <p style="margin: 4px 0 0 0; opacity: 0.85">${org.name}</p>
+      </div>
+      <div class="content">
+        <p><strong>Product:</strong> ${args.productName} (${args.productSku})</p>
+        <p><strong>Current Stock:</strong> ${args.currentStock}</p>
+        <p><strong>Reported By:</strong> ${args.reportedBy}</p>
+        <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
+        <a class="button" href="https://${org.slug}.whatthepack.today/inventory">View Inventory</a>
+      </div>
+      <p class="footer">This is an automated notification from What The Pack</p>
+    </div>
+  </body>
+</html>
     `;
 
     const textContent = `
-CRITICAL STOCK ALERT
+      CRITICAL STOCK ALERT
 
-Product: ${args.productName} (${args.productSku})
-Current Stock: ${args.currentStock} units
-Reported By: ${args.reportedBy}
-Time: ${new Date().toLocaleString()}
+      Product: ${args.productName} (${args.productSku})
+      Current Stock: ${args.currentStock} units
+      Reported By: ${args.reportedBy}
+      Time: ${new Date().toLocaleString()}
 
-This alert was automatically triggered when stock levels reached a critical threshold.
+      This alert was automatically triggered when stock levels reached a critical threshold.
 
-Recommended Action: Contact your vendor immediately to reorder this product.
+      Recommended Action: Contact your vendor immediately to reorder this product.
 
-View inventory at: https://${org.slug}.whatthepack.today/inventory
+      View inventory at: https://${org.slug}.whatthepack.today/inventory
 
----
-This is an automated notification from WhatThePack.today
+      ---
+      This is an automated notification from What The Pack
     `.trim();
 
     try {
       // Send to all recipients
       for (const email of args.recipientEmails) {
         await resend.emails.send({
-          from: "notifications@whatthepack.today",
+          from: "What The Pack <notifications@whatthepack.today>",
           to: email,
           subject,
           html: htmlContent,
@@ -196,51 +229,115 @@ export const sendDailyBriefing = action({
     const subject = `📊 Daily Briefing - ${org.name}`;
 
     const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charSet="utf-8" />
-          <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #e5e7eb; background: #0b0b0b; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background: #111827; color: white; padding: 16px; border-radius: 8px; }
-            .content { background: #161616; padding: 16px; border-radius: 8px; margin-top: 8px; }
-            .grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
-            .card { background: #0b0b0b; padding: 12px; border-radius: 6px; text-align: center; }
-            .value { font-size: 18px; font-weight: 700; color: #fff; }
-            .label { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: #9ca3af; }
-            .alert { background: #1f2937; padding: 12px; border-radius: 6px; margin-top: 12px; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="header">
-              <h1 style="margin: 0;">Daily Briefing</h1>
-              <p style="margin: 6px 0 0 0; color: #9ca3af;">${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p>
-            </div>
-            <div class="content">
-              <div class="grid">
-                <div class="card"><div class="value">${args.summary.orderCount}</div><div class="label">Orders</div></div>
-                <div class="card"><div class="value">$${args.summary.totalRevenue.toFixed(2)}</div><div class="label">Revenue</div></div>
-                <div class="card"><div class="value">$${args.summary.totalProfit.toFixed(2)}</div><div class="label">Profit</div></div>
-              </div>
-              ${
-                args.summary.lowStockItems.length > 0
-                  ? `<div class="alert"><strong style="color:#fbbf24;">Low Stock</strong><ul style="margin:8px 0 0 0; padding-left:16px;">${args.summary.lowStockItems
-                      .map((i) => `<li style="color:#f59e0b">${i}</li>`)
-                      .join("")}</ul></div>`
-                  : ""
-              }
-              <p style="margin-top: 16px;">Have a productive day!</p>
-            </div>
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        line-height: 1.6;
+        color: #e5e7eb;
+        background: #0b0b0b;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .header {
+        background: #111827;
+        color: white;
+        padding: 16px;
+        border-radius: 8px;
+      }
+      .content {
+        background: #161616;
+        padding: 16px;
+        border-radius: 8px;
+        margin-top: 8px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+      }
+      .card {
+        background: #0b0b0b;
+        padding: 12px;
+        border-radius: 6px;
+        text-align: center;
+      }
+      .value {
+        font-size: 18px;
+        font-weight: 700;
+        color: #fff;
+      }
+      .label {
+        font-size: 11px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: #9ca3af;
+      }
+      .alert {
+        background: #1f2937;
+        padding: 12px;
+        border-radius: 6px;
+        margin-top: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1 style="margin: 0">Daily Briefing</h1>
+        <p style="margin: 6px 0 0 0; color: #9ca3af">
+          ${new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+        </p>
+      </div>
+      <div class="content">
+        <div class="grid">
+          <div class="card">
+            <div class="value">${args.summary.orderCount}</div>
+            <div class="label">Orders</div>
           </div>
-        </body>
-      </html>
+          <div class="card">
+            <div class="value">$${args.summary.totalRevenue.toFixed(2)}</div>
+            <div class="label">Revenue</div>
+          </div>
+          <div class="card">
+            <div class="value">$${args.summary.totalProfit.toFixed(2)}</div>
+            <div class="label">Profit</div>
+          </div>
+        </div>
+        ${
+          args.summary.lowStockItems.length > 0
+            ? `
+        <div class="alert">
+          <strong style="color: #fbbf24">Low Stock</strong>
+          <ul style="margin: 8px 0 0 0; padding-left: 16px">
+            ${args.summary.lowStockItems
+              .map(
+                (i) => `
+            <li style="color: #f59e0b">${i}</li>
+            `,
+              )
+              .join("")}
+          </ul>
+        </div>
+        `
+            : ""
+        }
+        <p style="margin-top: 16px">Have a productive day!</p>
+      </div>
+    </div>
+  </body>
+</html>
     `;
 
     try {
       await resend.emails.send({
-        from: "notifications@whatthepack.today",
+        from: "What The Pack <notifications@whatthepack.today>",
         to: args.ownerEmail,
         subject,
         html: htmlContent,
@@ -270,28 +367,39 @@ export const sendOrderFailure = action({
     const subject = `⚠️ Order Processing Failed - ${args.orderNumber}`;
 
     const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-        <body style="font-family: Arial, sans-serif;">
-          <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-            <h2 style="color: #dc2626;">Order Processing Error</h2>
-            <p><strong>Order Number:</strong> ${args.orderNumber}</p>
-            <p><strong>Error:</strong> ${args.errorMessage}</p>
-            <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
-            <p>Please review this order and take appropriate action.</p>
-            <a href="https://${org.slug}.whatthepack.today/orders/${args.orderNumber}" 
-               style="display: inline-block; background: #1f2937; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px;">
-              View Order
-            </a>
-          </div>
-        </body>
-      </html>
+<!doctype html>
+<html>
+  <body style="font-family: Arial, sans-serif">
+    <div style="max-width: 600px; margin: 0 auto; padding: 20px">
+      <h2 style="color: #dc2626">Order Processing Error</h2>
+      <p><strong>Order Number:</strong> ${args.orderNumber}</p>
+      <p><strong>Error:</strong> ${args.errorMessage}</p>
+      <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
+      <p>Please review this order and take appropriate action.</p>
+      <a
+        href="https://${org.slug}.whatthepack.today/orders/${args.orderNumber}"
+        style="
+          display: inline-block;
+          background: #1f2937;
+          color: white;
+          padding: 12px 24px;
+          text-decoration: none;
+          border-radius: 6px;
+          margin-top: 16px;
+        "
+      >
+        View Order
+      </a>
+    </div>
+  </body>
+</html>
+
     `;
 
     try {
       for (const email of args.recipientEmails) {
         await resend.emails.send({
-          from: "notifications@whatthepack.today",
+          from: "What The Pack <notifications@whatthepack.today>",
           to: email,
           subject,
           html: htmlContent,
@@ -318,7 +426,7 @@ export async function sendEmail(options: {
 }) {
   try {
     const result = await resend.emails.send({
-      from: "notifications@whatthepack.today",
+      from: "What The Pack <notifications@whatthepack.today>",
       to: Array.isArray(options.to) ? options.to : [options.to],
       subject: options.subject,
       html: options.html || generateEmailHTML(options.template, options.data),
@@ -341,25 +449,141 @@ function generateEmailHTML(template?: string, data?: Record<string, any>): strin
   switch (template) {
     case "staff-welcome":
       return `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2>🎉 Welcome to ${data.organizationName}!</h2>
-          <p>Hi ${data.staffName},</p>
-          <p>You've been invited to join <strong>${data.organizationName}</strong> as a <strong>${data.staffRole}</strong>.</p>
-          <p>To complete your setup, please click the button below to create your password:</p>
-          
-          <a href="${data.setupLink}" style="background-color: #10b981; color: white; padding: 15px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin: 20px 0;">
-            Complete Your Setup
-          </a>
-          
-          <p>After setup, you can login at: <a href="${data.loginUrl}">${data.loginUrl}</a></p>
-          
-          <p>If you have any questions, contact us at <a href="mailto:${data.supportEmail}">${data.supportEmail}</a></p>
-          
-          <hr>
-          <p style="color: #6b7280; font-size: 12px;">
-            This invitation was sent by WhatThePack.today
-          </p>
-        </div>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>You're invited — ${data.organizationName}</title>
+    <style>
+      .preheader {
+        display: none !important;
+        visibility: hidden;
+        opacity: 0;
+        color: transparent;
+        height: 0;
+        width: 0;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body
+    style="
+      margin: 0;
+      padding: 0;
+      background: #f6f7fb;
+      font-family: -apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Arial, sans-serif;
+    "
+  >
+    <span class="preheader">You're invited to join ${data.organizationName} as a ${data.staffRole} on What The Pack</span>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse">
+      <tr>
+        <td align="center" style="padding: 24px">
+          <table
+            role="presentation"
+            width="100%"
+            cellpadding="0"
+            cellspacing="0"
+            style="max-width: 600px; border: 1px solid #e8eaf0; border-radius: 12px; background: #ffffff"
+          >
+            <tr>
+              <td style="padding: 28px">
+                <!-- Header -->
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 10px 0">
+                  <tr>
+                    <td style="vertical-align: middle">
+                      <div style="font-size: 12px; letter-spacing: 0.08em; color: #667085; text-transform: uppercase">
+                        What The Pack
+                      </div>
+                    </td>
+                    <td align="right" style="vertical-align: middle">
+                      <a href="mailto:${data.supportEmail}" style="font-size: 12px; color: #98a2b3; text-decoration: none"
+                        >${data.supportEmail}</a
+                      >
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- Greeting & Title -->
+                <p style="margin: 0 0 6px 0; font-size: 14px; line-height: 1.6; color: #334155">Hi ${data.staffName},</p>
+                <h1 style="margin: 8px 0 12px 0; font-size: 20px; line-height: 1.3; color: #111827">
+                  You're invited to join ${data.organizationName}
+                </h1>
+                <p style="margin: 0 0 16px; font-size: 14px; line-height: 1.7; color: #334155">
+                  You've been invited to join What The Pack as a <strong style="color: #111827">${data.staffRole}</strong>. To get
+                  started, set your password using the button below.
+                </p>
+
+                <!-- CTA -->
+                <table role="presentation" cellpadding="0" cellspacing="0" style="margin: 16px 0 10px">
+                  <tr>
+                    <td align="left">
+                      <a
+                        href="${data.setupLink}"
+                        style="
+                          background: #111827;
+                          color: #ffffff;
+                          text-decoration: none;
+                          padding: 12px 20px;
+                          border-radius: 6px;
+                          display: inline-block;
+                          font-weight: 600;
+                        "
+                      >
+                        Set Your Password
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- Fallback link -->
+                <p style="margin: 8px 0 8px 0; font-size: 12px; color: #64748b">
+                  If the button doesn't work, copy and paste this URL:
+                </p>
+                <div
+                  style="
+                    font-size: 12px;
+                    color: #0f172a;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 8px;
+                    padding: 10px;
+                    word-break: break-all;
+                    margin: 0 0 16px 0;
+                  "
+                >
+                  <a href="${data.setupLink}" style="color: #0f172a; text-decoration: underline">${data.setupLink}</a>
+                </div>
+
+                <!-- After setup -->
+                <p style="margin: 0 0 8px 0; font-size: 13px; line-height: 1.7; color: #334155">After setup, sign in here:</p>
+                <div
+                  style="
+                    font-size: 12px;
+                    color: #0f172a;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 8px;
+                    padding: 10px;
+                    word-break: break-all;
+                    margin: 0 0 16px 0;
+                  "
+                >
+                  <a href="${data.loginUrl}" style="color: #0f172a; text-decoration: underline">${data.loginUrl}</a>
+                </div>
+
+                <!-- Footer note -->
+                <p style="margin: 16px 0 0 0; font-size: 12px; line-height: 1.6; color: #64748b">
+                  If you didn’t expect this invitation, you can safely ignore this email or contact us at
+                  <a href="mailto:${data.supportEmail}" style="color: #64748b; text-decoration: underline">${data.supportEmail}</a
+                  >.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
       `;
 
     default:
@@ -376,21 +600,19 @@ function generateEmailText(template?: string, data?: Record<string, any>): strin
   switch (template) {
     case "staff-welcome":
       return `
-Welcome to ${data.organizationName}!
+        You're invited to join ${data.organizationName}
 
-Hi ${data.staffName},
+        Hi ${data.staffName},
 
-You've been invited to join ${data.organizationName} as a ${data.staffRole}.
+        You've been invited to join What The Pack as a ${data.staffRole}.
 
-To complete your setup, visit this link:
-${data.setupLink}
+        Set your password using this link:
+        ${data.setupLink}
 
-After setup, you can login at: ${data.loginUrl}
+        After setup, sign in here:
+        ${data.loginUrl}
 
-If you have any questions, contact us at ${data.supportEmail}
-
----
-This invitation was sent by WhatThePack.today
+        If you didn't expect this invitation, ignore this email or contact ${data.supportEmail}.
       `;
 
     default:
