@@ -365,6 +365,7 @@ export const upsertAuth0User = internalMutation({
     orgId: v.id("organizations"),
     role: v.union(v.literal("owner"), v.literal("admin"), v.literal("packer")),
     username: v.optional(v.string()),
+    name: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const normalizedEmail = args.email.toLowerCase().trim();
@@ -390,6 +391,9 @@ export const upsertAuth0User = internalMutation({
 
     if (args.username && args.username.trim().length > 0) {
       updates.username = args.username.trim();
+    }
+    if (args.name && args.name.trim().length > 0) {
+      updates.name = args.name.trim();
     }
 
     if (user) {

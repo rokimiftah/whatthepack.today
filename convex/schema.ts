@@ -184,7 +184,7 @@ export default defineSchema({
   invites: defineTable({
     orgId: v.id("organizations"),
     email: v.string(),
-    username: v.string(), // e.g., lisa_admin
+    name: v.string(),
     role: roleType,
     status: inviteStatus,
     // Auth0 references

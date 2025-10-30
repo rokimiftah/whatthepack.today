@@ -199,6 +199,21 @@ export const getForCurrentUser = query({
       effectiveRoles.push("owner");
     }
 
+    // DB fallback for admin/packer: if JWT lacks roles, but Convex user record has a role for this org, include it
+    if (!effectiveRoles.length || (!effectiveRoles.includes("admin") && !effectiveRoles.includes("packer"))) {
+      try {
+        const user = await ctx.db
+          .query("users")
+          .withIndex("by_auth0Id", (q) => q.eq("auth0Id", auth0Id))
+          .first();
+        if (user?.orgId === org._id && (user.role === "admin" || user.role === "packer")) {
+          if (!effectiveRoles.includes(user.role)) effectiveRoles.push(user.role);
+        }
+      } catch (_e) {
+        // best-effort
+      }
+    }
+
     return {
       organization: org,
       roles: effectiveRoles,

@@ -234,7 +234,7 @@ export const inviteStaff = action({
   args: {
     orgId: v.id("organizations"),
     email: v.string(),
-    username: v.string(),
+    name: v.string(),
     role: v.union(v.literal("admin"), v.literal("packer")),
   },
   handler: async (ctx, args): Promise<{ success: boolean; inviteId: any; message: string }> => {
@@ -254,15 +254,6 @@ export const inviteStaff = action({
       // 1. Create user in Auth0 (DB connection requires a password)
       let newUser: any;
       try {
-        // Detect whether the DB connection requires username; if not, omit username to avoid 400
-        let requiresUsername = false;
-        try {
-          const cons = await (mgmt.connections as any).getAll({ name: "Username-Password-Authentication" });
-          const list = Array.isArray(cons?.data) ? cons.data : Array.isArray(cons) ? cons : [];
-          const db = list[0];
-          requiresUsername = Boolean(db?.options?.requires_username || db?.requires_username);
-        } catch {}
-
         const payload: any = {
           email: args.email,
           connection: "Username-Password-Authentication",
@@ -270,7 +261,8 @@ export const inviteStaff = action({
           email_verified: false,
           verify_email: false,
         };
-        if (requiresUsername && args.username) payload.username = args.username;
+        // Do not use username; set display name when provided
+        if (args.name && args.name.trim()) payload.name = args.name.trim();
 
         try {
           newUser = await mgmt.users.create(payload as any);
@@ -278,7 +270,7 @@ export const inviteStaff = action({
           const msg = err?.message || "";
           // If server complains about username on a connection without requires_username, retry without username
           if (msg.includes("Cannot set username for connection without requires_username") || err?.statusCode === 400) {
-            delete payload.username;
+            delete (payload as any).username;
             newUser = await mgmt.users.create(payload as any);
           } else {
             throw err;
@@ -474,14 +466,14 @@ export const inviteStaff = action({
         email: args.email,
         orgId: args.orgId,
         role: args.role,
-        username: args.username,
+        name: args.name,
       });
 
       // 6. Store invite record in Convex
       const inviteId: any = await ctx.runMutation((api as any).invites.create, {
         orgId: args.orgId,
         email: args.email,
-        username: args.username,
+        name: args.name,
         role: args.role,
         invitedBy: org.ownerId,
       });
@@ -499,7 +491,7 @@ export const inviteStaff = action({
         await ctx.runAction((internal as any).emails.sendStaffInvite, {
           orgId: args.orgId,
           email: args.email,
-          username: args.username,
+          name: args.name,
           role: args.role,
           ticketUrl: ticketUrl,
         });
@@ -594,7 +586,7 @@ export const listStaff = action({
             email: invite.email,
             orgId: args.orgId,
             role: invite.role,
-            username: invite.username,
+            name: invite.name,
           }),
         );
       }

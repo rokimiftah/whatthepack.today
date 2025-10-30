@@ -194,6 +194,7 @@ export const requireRole = async (ctx: any, orgId: any, allowedRoles: string[]) 
   // Check if user has any of the allowed roles
   let hasRole = userRoles.some((role) => allowedRoles.includes(role));
   let fallbackOwner = false;
+  let fallbackDbRole: string | undefined;
 
   if (!hasRole && allowedRoles.includes("owner")) {
     // Fallback: treat user as owner if DB says they are the owner of the requested org
@@ -209,6 +210,20 @@ export const requireRole = async (ctx: any, orgId: any, allowedRoles: string[]) 
   }
 
   if (!hasRole) {
+    // DB fallback for admin/packer: trust Convex DB role when JWT roles are missing
+    try {
+      const user = await ctx.db
+        .query("users")
+        .withIndex("by_auth0Id", (q: any) => q.eq("auth0Id", identity.subject))
+        .first();
+      if (user && user.orgId === orgId && allowedRoles.includes(user.role)) {
+        hasRole = true;
+        fallbackDbRole = user.role as string;
+      }
+    } catch {}
+  }
+
+  if (!hasRole) {
     throw new Error(`Access denied. Required roles: ${allowedRoles.join(", ")}. User roles: ${userRoles.join(", ")}`);
   }
 
@@ -216,7 +231,7 @@ export const requireRole = async (ctx: any, orgId: any, allowedRoles: string[]) 
   // JWT now contains Auth0 org_id (org_xxxxx), but we receive Convex org_id
   // We need to fetch the Convex org and compare auth0OrgId
 
-  if (!userAuth0OrgId && !fallbackOwner) {
+  if (!userAuth0OrgId && !fallbackOwner && !fallbackDbRole) {
     throw new Error("Access denied. No organization found in token. Please re-login.");
   }
 
@@ -231,7 +246,7 @@ export const requireRole = async (ctx: any, orgId: any, allowedRoles: string[]) 
     throw new Error("Organization not found");
   }
 
-  if (!fallbackOwner && userAuth0OrgId) {
+  if (!fallbackOwner && !fallbackDbRole && userAuth0OrgId) {
     // If token has Auth0 org id, ensure it matches org's auth0OrgId if present
     if (org.auth0OrgId && org.auth0OrgId !== userAuth0OrgId) {
       console.error("[requireRole] Org mismatch:", {
@@ -241,7 +256,7 @@ export const requireRole = async (ctx: any, orgId: any, allowedRoles: string[]) 
       });
       throw new Error("Access denied. User does not belong to this organization");
     }
-  } else if (!fallbackOwner && org.auth0OrgId && org.auth0OrgId !== userAuth0OrgId) {
+  } else if (!fallbackOwner && !fallbackDbRole && org.auth0OrgId && org.auth0OrgId !== userAuth0OrgId) {
     console.error("[requireRole] Org mismatch:", {
       userAuth0OrgId,
       orgAuth0OrgId: org.auth0OrgId,
@@ -250,7 +265,7 @@ export const requireRole = async (ctx: any, orgId: any, allowedRoles: string[]) 
     throw new Error("Access denied. User does not belong to this organization");
   }
 
-  return fallbackOwner ? "owner" : userRoles[0]; // Return primary role
+  return fallbackOwner ? "owner" : fallbackDbRole || userRoles[0]; // Return primary role
 };
 
 // Helper to get user's organization ID from JWT

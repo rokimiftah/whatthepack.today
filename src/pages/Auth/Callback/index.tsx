@@ -19,7 +19,7 @@ import { api } from "../../../../convex/_generated/api";
  * Redirects based on onboarding completion status.
  */
 export default function CallbackPage() {
-  const { isLoading, isAuthenticated, error, user, logout } = useAuth0();
+  const { isLoading, isAuthenticated, error, user, logout, loginWithRedirect } = useAuth0();
   const [, setLocation] = useLocation();
   const hasHandledRef = useRef(false);
   const subdomain = getCurrentSubdomain();
@@ -32,6 +32,17 @@ export default function CallbackPage() {
   const sessionMetadata = useQuery(api.auth.getSessionMetadata, isAuthenticated ? {} : "skip");
 
   useEffect(() => {
+    // Fallback: if Auth0 returned access_denied "not part of the org_*", retry login WITHOUT organization param
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const err = params.get("error");
+      const desc = params.get("error_description") || "";
+      if (err === "access_denied" && /is not part of the org_/i.test(decodeURIComponent(desc))) {
+        void loginWithRedirect({ authorizationParams: {} }).catch(() => {});
+        return;
+      }
+    }
+
     // Once authentication is complete, redirect to appropriate page
     if (hasHandledRef.current) return;
 
@@ -86,7 +97,7 @@ export default function CallbackPage() {
       hasHandledRef.current = true;
       setLocation("/", { replace: true });
     }
-  }, [isLoading, isAuthenticated, organizationResult, sessionMetadata, setLocation, user, logout]);
+  }, [isLoading, isAuthenticated, organizationResult, sessionMetadata, setLocation, user, logout, loginWithRedirect]);
 
   if (error) {
     return (

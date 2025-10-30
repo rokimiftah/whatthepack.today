@@ -47,7 +47,7 @@ export default function StaffManagementPage() {
   const [loading, setLoading] = useState(true);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [email, setEmail] = useState("");
-  const [username, setUsername] = useState("");
+  const [name, setName] = useState("");
   const [role, setRole] = useState<"admin" | "packer">("admin");
 
   const refresh = useCallback(async () => {
@@ -77,11 +77,11 @@ export default function StaffManagementPage() {
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !username.trim()) return;
+    if (!email.trim() || !name.trim()) return;
     try {
-      await inviteStaff({ orgId, email: email.trim(), username: username.trim(), role });
+      await inviteStaff({ orgId, email: email.trim(), name: name.trim(), role });
       setEmail("");
-      setUsername("");
+      setName("");
       alert("Invitation sent");
       void refresh();
     } catch (err: any) {
@@ -229,10 +229,10 @@ export default function StaffManagementPage() {
                 </Grid.Col>
                 <Grid.Col span={{ base: 12, md: 4 }}>
                   <TextInput
-                    label="Username"
-                    placeholder="e.g. lisa_admin"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
+                    label="Full Name"
+                    placeholder="e.g. Lisa Setiawan"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
                     required
                   />
                 </Grid.Col>

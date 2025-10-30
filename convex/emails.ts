@@ -13,7 +13,7 @@ export const sendStaffInvite = action({
   args: {
     orgId: v.id("organizations"),
     email: v.string(),
-    username: v.string(),
+    name: v.string(),
     role: v.union(v.literal("admin"), v.literal("packer")),
     ticketUrl: v.string(),
   },
@@ -23,7 +23,7 @@ export const sendStaffInvite = action({
 
     const to = args.email;
     const subject = `You're invited to ${org.name} on WhatThePack.today`;
-    const staffName = args.username || to.split("@")[0];
+    const staffName = args.name || to.split("@")[0];
     const loginUrl = `https://${org.slug}.whatthepack.today/login`;
 
     const data = {

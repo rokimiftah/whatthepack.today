@@ -12,7 +12,7 @@ export const create = mutation({
   args: {
     orgId: v.id("organizations"),
     email: v.string(),
-    username: v.string(),
+    name: v.string(),
     role: v.union(v.literal("admin"), v.literal("packer")),
     invitedBy: v.optional(v.id("users")),
   },
@@ -54,7 +54,7 @@ export const create = mutation({
     const inviteId = await ctx.db.insert("invites", {
       orgId: args.orgId,
       email: args.email,
-      username: args.username,
+      name: args.name,
       role: args.role,
       status: "pending",
       invitedBy: inviterUserId,
