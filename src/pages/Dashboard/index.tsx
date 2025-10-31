@@ -117,24 +117,9 @@ export default function DashboardPlaceholder() {
 
   if (!isAuthenticated) {
     return (
-      <FullscreenState
-        title="Sign in required"
-        description="Sign in to view your dashboard."
-        primaryAction={
-          <Button
-            onClick={() => {
-              const oid = subdomainValidation
-                ? (getAuth0OrgIdForCurrentEnv(subdomainValidation as any) as string | undefined)
-                : undefined;
-              const authorizationParams: Record<string, string> = {};
-              if (oid) authorizationParams.organization = oid;
-              void loginWithRedirect({ authorizationParams });
-            }}
-          >
-            Sign in
-          </Button>
-        }
-      />
+      <div className="flex min-h-screen flex-col items-center justify-center bg-black text-white">
+        <Loader size="xl" type="dots" />
+      </div>
     );
   }
 
@@ -150,15 +135,9 @@ export default function DashboardPlaceholder() {
 
   if (!organizationResult?.organization) {
     return (
-      <FullscreenState
-        title="Dashboard unavailable"
-        description="We cannot find your organization details. Sign out and try again, or contact support."
-        primaryAction={
-          <Button variant="outline" onClick={() => auth0Logout({ logoutParams: { returnTo: window.location.origin } })}>
-            Sign out
-          </Button>
-        }
-      />
+      <div className="flex min-h-screen flex-col items-center justify-center bg-black text-white">
+        <Loader size="xl" type="dots" />
+      </div>
     );
   }
 
