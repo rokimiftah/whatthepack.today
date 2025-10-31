@@ -663,7 +663,7 @@ function TenantRoot() {
         }
         const search = typeof window !== "undefined" ? window.location.search : "";
         const isSignupIntent = search.includes("action=signup");
-        const authorizationParams: Record<string, string> = {};
+        const authorizationParams: Record<string, string> = { prompt: "none" };
         const orgParam = ensuredOrgId || precomputedOrgId;
         if (orgParam) authorizationParams.organization = orgParam;
         if (isSignupIntent) authorizationParams.screen_hint = "signup";
