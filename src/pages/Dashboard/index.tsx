@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { useAuth0 } from "@auth0/auth0-react";
 import { Anchor, Box, Button, Center, Container, Loader, Paper, Stack, Text, Title } from "@mantine/core";
 import { useConvexAuth, useQuery } from "convex/react";
 
-import { buildOrgUrl, getCurrentSubdomain } from "@shared/utils/subdomain";
+import { buildOrgUrl, getAuth0OrgIdForCurrentEnv, getCurrentSubdomain } from "@shared/utils/subdomain";
 
 import { api } from "../../../convex/_generated/api";
 import AdminDashboard from "./AdminDashboard";
@@ -34,9 +34,10 @@ function FullscreenState({
 }
 
 export default function DashboardPlaceholder() {
-  const { logout: auth0Logout } = useAuth0();
+  const { loginWithRedirect, logout: auth0Logout } = useAuth0();
   const { isAuthenticated, isLoading } = useConvexAuth();
   const subdomain = getCurrentSubdomain();
+  const loginStartedRef = useRef(false);
 
   const subdomainValidation = useQuery(api.organizations.getBySlug, subdomain ? { slug: subdomain } : "skip");
 
@@ -60,6 +61,20 @@ export default function DashboardPlaceholder() {
       });
     }
   }, [organizationResult, subdomain, auth0Logout]);
+
+  // If unauthenticated on a tenant domain, automatically start org-scoped login
+  useEffect(() => {
+    if (isLoading || isAuthenticated || !subdomain) return;
+    if (subdomainValidation === undefined) return; // wait until we know the org exists
+    if (loginStartedRef.current) return;
+    loginStartedRef.current = true;
+    const oid = subdomainValidation ? (getAuth0OrgIdForCurrentEnv(subdomainValidation as any) as string | undefined) : undefined;
+    const authorizationParams: Record<string, string> = {};
+    if (oid) authorizationParams.organization = oid;
+    void loginWithRedirect({ authorizationParams }).catch(() => {
+      // allow UI fallback below
+    });
+  }, [isLoading, isAuthenticated, subdomain, subdomainValidation, loginWithRedirect]);
 
   if (subdomain && subdomainValidation === undefined) {
     return (
@@ -101,7 +116,26 @@ export default function DashboardPlaceholder() {
   }
 
   if (!isAuthenticated) {
-    return <FullscreenState title="Sign in required" description="Sign in to view your dashboard." />;
+    return (
+      <FullscreenState
+        title="Sign in required"
+        description="Sign in to view your dashboard."
+        primaryAction={
+          <Button
+            onClick={() => {
+              const oid = subdomainValidation
+                ? (getAuth0OrgIdForCurrentEnv(subdomainValidation as any) as string | undefined)
+                : undefined;
+              const authorizationParams: Record<string, string> = {};
+              if (oid) authorizationParams.organization = oid;
+              void loginWithRedirect({ authorizationParams });
+            }}
+          >
+            Sign in
+          </Button>
+        }
+      />
+    );
   }
 
   if (organizationResult === undefined) {
