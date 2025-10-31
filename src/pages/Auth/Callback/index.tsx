@@ -1,6 +1,6 @@
 // src/pages/Auth/Callback/index.tsx
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import { useAuth0 } from "@auth0/auth0-react";
 import { Center, Loader, Stack, Text } from "@mantine/core";
@@ -32,24 +32,23 @@ export default function CallbackPage() {
   );
   const sessionMetadata = useQuery(api.auth.getSessionMetadata, isAuthenticated ? {} : "skip");
 
+  const shouldRetryNoOrg = useMemo(() => {
+    const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    const err = urlParams?.get("error");
+    const desc = decodeURIComponent(urlParams?.get("error_description") || "");
+    const urlMismatch = err === "access_denied" && /is not part of the org_/i.test(desc);
+    const hookMismatch = !!(error && /is not part of the org_/i.test(error.message || ""));
+    return urlMismatch || hookMismatch;
+  }, [error]);
+
   useEffect(() => {
-    // If Auth0 SDK surfaced an error that the user isn't part of the org, retry WITHOUT the organization param
-    if (!retriedNoOrgRef.current && error && /is not part of the org_/i.test(error.message || "")) {
+    // If Auth0 sign-in failed with org-membership error, immediately retry WITHOUT organization
+    if (!retriedNoOrgRef.current && shouldRetryNoOrg) {
       retriedNoOrgRef.current = true;
       void loginWithRedirect({ authorizationParams: {} }).catch(() => {});
       return;
     }
-
-    // Fallback: if Auth0 returned access_denied "not part of the org_*", retry login WITHOUT organization param
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const err = params.get("error");
-      const desc = params.get("error_description") || "";
-      if (err === "access_denied" && /is not part of the org_/i.test(decodeURIComponent(desc))) {
-        void loginWithRedirect({ authorizationParams: {} }).catch(() => {});
-        return;
-      }
-    }
+    // (Old path retained but now covered by shouldRetryNoOrg)
 
     // Once authentication is complete, redirect to appropriate page
     if (hasHandledRef.current) return;
@@ -105,11 +104,21 @@ export default function CallbackPage() {
       hasHandledRef.current = true;
       setLocation("/", { replace: true });
     }
-  }, [isLoading, isAuthenticated, organizationResult, sessionMetadata, setLocation, user, logout, loginWithRedirect]);
+  }, [
+    isLoading,
+    isAuthenticated,
+    organizationResult,
+    sessionMetadata,
+    setLocation,
+    user,
+    logout,
+    loginWithRedirect,
+    shouldRetryNoOrg,
+  ]);
 
   if (error) {
-    // If we've triggered a retry already, just show a loader; otherwise show the error
-    if (retriedNoOrgRef.current) {
+    // For org-membership error, hide the error and show a loader while retrying without organization
+    if (retriedNoOrgRef.current || shouldRetryNoOrg) {
       return (
         <Center style={{ height: "100vh" }}>
           <Stack align="center" gap="md">
