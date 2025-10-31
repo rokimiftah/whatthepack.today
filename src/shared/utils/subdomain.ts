@@ -88,6 +88,16 @@ export function isDevelopmentEnvironment(): boolean {
 }
 
 /**
+ * Pick the correct Auth0 org_id for the current hostname.
+ * Supports dual-tenant (dev/prod) with fields auth0OrgIdDev/auth0OrgIdProd, and falls back to auth0OrgId.
+ */
+export function getAuth0OrgIdForCurrentEnv(org: any): string | undefined {
+  const isDev = isDevelopmentEnvironment();
+  if (isDev) return org?.auth0OrgIdDev || org?.auth0OrgId;
+  return org?.auth0OrgIdProd || org?.auth0OrgId;
+}
+
+/**
  * Build organization URL for current environment
  * Automatically detects dev vs prod and builds correct URL
  *

@@ -7,7 +7,7 @@ import { Center, Loader, Stack, Text } from "@mantine/core";
 import { useQuery } from "convex/react";
 import { useLocation } from "wouter";
 
-import { getCurrentSubdomain } from "@shared/utils/subdomain";
+import { getAuth0OrgIdForCurrentEnv, getCurrentSubdomain } from "@shared/utils/subdomain";
 
 import { api } from "../../../../convex/_generated/api";
 
@@ -23,6 +23,7 @@ export default function CallbackPage() {
   const [, setLocation] = useLocation();
   const hasHandledRef = useRef(false);
   const retriedNoOrgRef = useRef(false);
+  const retriedLoginRequiredRef = useRef(false);
   const subdomain = getCurrentSubdomain();
 
   // Check if user has completed onboarding
@@ -31,6 +32,7 @@ export default function CallbackPage() {
     isAuthenticated ? { expectedSlug: subdomain || undefined } : "skip",
   );
   const sessionMetadata = useQuery(api.auth.getSessionMetadata, isAuthenticated ? {} : "skip");
+  const orgBySlug = useQuery(api.organizations.getBySlug, subdomain ? { slug: subdomain } : "skip");
 
   const shouldRetryNoOrg = useMemo(() => {
     const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
@@ -48,7 +50,19 @@ export default function CallbackPage() {
       void loginWithRedirect({ authorizationParams: {} }).catch(() => {});
       return;
     }
-    // (Old path retained but now covered by shouldRetryNoOrg)
+    // Handle login_required by triggering interactive login (with org param when available)
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const err = params.get("error");
+      if (!isAuthenticated && err === "login_required" && !retriedLoginRequiredRef.current) {
+        retriedLoginRequiredRef.current = true;
+        const oid = orgBySlug ? (getAuth0OrgIdForCurrentEnv(orgBySlug as any) as string | undefined) : undefined;
+        const authorizationParams: Record<string, string> = {};
+        if (oid) authorizationParams.organization = oid;
+        void loginWithRedirect({ authorizationParams }).catch(() => {});
+        return;
+      }
+    }
 
     // Once authentication is complete, redirect to appropriate page
     if (hasHandledRef.current) return;
@@ -90,14 +104,12 @@ export default function CallbackPage() {
         return;
       }
 
-      // NEW: If NO organization but user is OWNER → Onboarding (first-time setup)
+      // If NO organization → go to onboarding (owner-only gating handled inside onboarding page)
       if (!organizationResult || !organizationResult?.organization) {
-        if (sessionMetadata?.roles?.includes("owner")) {
-          hasHandledRef.current = true;
-          console.log("[Callback] Owner without org → redirecting to onboarding");
-          setLocation("/onboarding", { replace: true });
-          return;
-        }
+        hasHandledRef.current = true;
+        console.log("[Callback] No organization → redirecting to onboarding");
+        setLocation("/onboarding", { replace: true });
+        return;
       }
 
       // Fallback: redirect to root (for non-owners without org)
@@ -114,11 +126,12 @@ export default function CallbackPage() {
     logout,
     loginWithRedirect,
     shouldRetryNoOrg,
+    orgBySlug,
   ]);
 
   if (error) {
     // For org-membership error, hide the error and show a loader while retrying without organization
-    if (retriedNoOrgRef.current || shouldRetryNoOrg) {
+    if (retriedNoOrgRef.current || shouldRetryNoOrg || retriedLoginRequiredRef.current) {
       return (
         <Center style={{ height: "100vh" }}>
           <Stack align="center" gap="md">

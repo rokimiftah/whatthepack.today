@@ -27,6 +27,26 @@ export const getByAuth0OrgId = internalQuery({
   },
 });
 
+export const getByAuth0OrgIdProd = internalQuery({
+  args: { auth0OrgId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("organizations")
+      .withIndex("by_auth0OrgIdProd", (q) => q.eq("auth0OrgIdProd", args.auth0OrgId))
+      .first();
+  },
+});
+
+export const getByAuth0OrgIdDev = internalQuery({
+  args: { auth0OrgId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("organizations")
+      .withIndex("by_auth0OrgIdDev", (q) => q.eq("auth0OrgIdDev", args.auth0OrgId))
+      .first();
+  },
+});
+
 // Internal mutation to update Auth0 org ID
 export const updateAuth0OrgId = internalMutation({
   args: {
@@ -34,10 +54,20 @@ export const updateAuth0OrgId = internalMutation({
     auth0OrgId: v.string(),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.orgId, {
-      auth0OrgId: args.auth0OrgId,
-      updatedAt: Date.now(),
-    });
+    // Always keep back-compat field updated
+    const updates: any = { auth0OrgId: args.auth0OrgId, updatedAt: Date.now() };
+
+    // Detect env by APP_DOMAIN_SUFFIX (".dev.whatthepack.today" => dev)
+    const suffix = (process.env.APP_DOMAIN_SUFFIX || "").trim();
+    const isDev = suffix.includes(".dev.") || suffix === ".dev.whatthepack.today";
+
+    if (isDev) {
+      updates.auth0OrgIdDev = args.auth0OrgId;
+    } else {
+      updates.auth0OrgIdProd = args.auth0OrgId;
+    }
+
+    await ctx.db.patch(args.orgId, updates);
   },
 });
 

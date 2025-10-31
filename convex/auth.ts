@@ -247,22 +247,18 @@ export const requireRole = async (ctx: any, orgId: any, allowedRoles: string[]) 
   }
 
   if (!fallbackOwner && !fallbackDbRole && userAuth0OrgId) {
-    // If token has Auth0 org id, ensure it matches org's auth0OrgId if present
-    if (org.auth0OrgId && org.auth0OrgId !== userAuth0OrgId) {
+    // If token has Auth0 org id, ensure it matches any of org's possible env-bound ids
+    const match = [org.auth0OrgId, org.auth0OrgIdProd, org.auth0OrgIdDev].filter(Boolean).includes(userAuth0OrgId);
+    if (!match) {
       console.error("[requireRole] Org mismatch:", {
         userAuth0OrgId,
         orgAuth0OrgId: org.auth0OrgId,
+        orgAuth0OrgIdProd: org.auth0OrgIdProd,
+        orgAuth0OrgIdDev: org.auth0OrgIdDev,
         convexOrgId: orgId,
       });
       throw new Error("Access denied. User does not belong to this organization");
     }
-  } else if (!fallbackOwner && !fallbackDbRole && org.auth0OrgId && org.auth0OrgId !== userAuth0OrgId) {
-    console.error("[requireRole] Org mismatch:", {
-      userAuth0OrgId,
-      orgAuth0OrgId: org.auth0OrgId,
-      convexOrgId: orgId,
-    });
-    throw new Error("Access denied. User does not belong to this organization");
   }
 
   return fallbackOwner ? "owner" : fallbackDbRole || userRoles[0]; // Return primary role
@@ -334,8 +330,26 @@ export const getUserOrgId = async (ctx: any): Promise<Id<"organizations">> => {
       .query("organizations")
       .withIndex("by_auth0OrgId", (q: any) => q.eq("auth0OrgId", claimValue))
       .first();
+    if (!organization) {
+      organization = await ctx.db
+        .query("organizations")
+        .withIndex("by_auth0OrgIdProd", (q: any) => q.eq("auth0OrgIdProd", claimValue))
+        .first();
+    }
+    if (!organization) {
+      organization = await ctx.db
+        .query("organizations")
+        .withIndex("by_auth0OrgIdDev", (q: any) => q.eq("auth0OrgIdDev", claimValue))
+        .first();
+    }
   } else if (typeof ctx.runQuery === "function") {
     organization = await ctx.runQuery(internal.organizations.getByAuth0OrgId, { auth0OrgId: claimValue });
+    if (!organization && (internal as any)?.organizations?.getByAuth0OrgIdProd) {
+      organization = await ctx.runQuery((internal as any).organizations.getByAuth0OrgIdProd, { auth0OrgId: claimValue });
+    }
+    if (!organization && (internal as any)?.organizations?.getByAuth0OrgIdDev) {
+      organization = await ctx.runQuery((internal as any).organizations.getByAuth0OrgIdDev, { auth0OrgId: claimValue });
+    }
   }
 
   if (!organization) {

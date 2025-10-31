@@ -46,7 +46,10 @@ export default defineSchema({
     slug: v.string(), // Subdomain slug (e.g., "store-name")
     ownerId: v.id("users"), // Owner user reference
     ownerAuth0Id: v.string(), // Auth0 user_id of owner
-    auth0OrgId: v.optional(v.string()), // Auth0 organization ID (org_xxxxx)
+    // Auth0 org IDs per environment (support dev/prod tenants)
+    auth0OrgId: v.optional(v.string()), // Back-compat default
+    auth0OrgIdProd: v.optional(v.string()),
+    auth0OrgIdDev: v.optional(v.string()),
     vapiAssistantId: v.optional(v.string()), // Cached Vapi assistant identifier
     onboardingCompleted: v.boolean(), // Owner finished initial setup
     // Integration settings
@@ -60,7 +63,9 @@ export default defineSchema({
     .index("by_slug", ["slug"])
     .index("by_owner", ["ownerId"])
     .index("by_ownerAuth0Id", ["ownerAuth0Id"])
-    .index("by_auth0OrgId", ["auth0OrgId"]),
+    .index("by_auth0OrgId", ["auth0OrgId"])
+    .index("by_auth0OrgIdProd", ["auth0OrgIdProd"])
+    .index("by_auth0OrgIdDev", ["auth0OrgIdDev"]),
 
   // Products/Inventory
   products: defineTable({

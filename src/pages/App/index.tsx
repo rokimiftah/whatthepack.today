@@ -20,7 +20,7 @@ import {
 import { Authenticated, Unauthenticated, useAction, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useLocation } from "wouter";
 
-import { buildOrgUrl, getCurrentSubdomain, isReservedSubdomain } from "@shared/utils/subdomain";
+import { buildOrgUrl, getAuth0OrgIdForCurrentEnv, getCurrentSubdomain, isReservedSubdomain } from "@shared/utils/subdomain";
 
 import { api } from "../../../convex/_generated/api";
 
@@ -647,7 +647,7 @@ function TenantRoot() {
 
     // If not authenticated, auto-redirect to Auth0 login with organization
     if (!isAuthenticated && subdomainValidation !== null) {
-      const auth0OrgId = (subdomainValidation as any).auth0OrgId;
+      const auth0OrgId = getAuth0OrgIdForCurrentEnv(subdomainValidation as any);
       console.log("[TenantRoot] Not authenticated, preparing org connection then redirecting to Auth0 login...");
       (async () => {
         try {

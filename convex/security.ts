@@ -42,12 +42,15 @@ export async function requireOrgAccess(ctx: QueryCtx | MutationCtx, requestedOrg
     throw new Error("Access denied. No organization found in token. Please re-login.");
   }
 
-  // Compare JWT's Auth0 org_id with Convex org's auth0OrgId
-  if (org.auth0OrgId !== userAuth0OrgId) {
+  // Compare JWT's Auth0 org_id with any of the stored org ids (prod/dev/back-compat)
+  const ok = [org.auth0OrgId, org.auth0OrgIdProd, org.auth0OrgIdDev].filter(Boolean).includes(userAuth0OrgId);
+  if (!ok) {
     console.warn("[Security] Unauthorized org access attempt", {
       auth0Id: identity.subject,
       userAuth0OrgId,
       orgAuth0OrgId: org.auth0OrgId,
+      orgAuth0OrgIdProd: (org as any).auth0OrgIdProd,
+      orgAuth0OrgIdDev: (org as any).auth0OrgIdDev,
       requestedOrgId,
     });
     throw new Error("Unauthorized: Cannot access other organization's data");

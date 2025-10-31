@@ -8,7 +8,7 @@ import { IconCircleCheck } from "@tabler/icons-react";
 import { useQuery } from "convex/react";
 import { useLocation } from "wouter";
 
-import { getCurrentSubdomain } from "@shared/utils/subdomain";
+import { getAuth0OrgIdForCurrentEnv, getCurrentSubdomain } from "@shared/utils/subdomain";
 
 import { api } from "../../../../convex/_generated/api";
 
@@ -40,7 +40,9 @@ export default function VerifiedPage() {
             redirect_uri: `${window.location.origin}/auth/callback`,
             // Use prompt: none to skip login screen if session exists
             prompt: "none",
-            ...(org && (org as any).auth0OrgId ? { organization: (org as any).auth0OrgId as string } : {}),
+            ...(org && getAuth0OrgIdForCurrentEnv(org as any)
+              ? { organization: getAuth0OrgIdForCurrentEnv(org as any) as string }
+              : {}),
           },
           appState: {
             returnTo: "/onboarding",
@@ -50,7 +52,9 @@ export default function VerifiedPage() {
           loginWithRedirect({
             authorizationParams: {
               redirect_uri: `${window.location.origin}/auth/callback`,
-              ...(org && (org as any).auth0OrgId ? { organization: (org as any).auth0OrgId as string } : {}),
+              ...(org && getAuth0OrgIdForCurrentEnv(org as any)
+                ? { organization: getAuth0OrgIdForCurrentEnv(org as any) as string }
+                : {}),
             },
             appState: {
               returnTo: "/onboarding",

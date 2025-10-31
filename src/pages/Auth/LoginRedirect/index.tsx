@@ -5,7 +5,7 @@ import { Center, Loader, Stack } from "@mantine/core";
 import { useQuery } from "convex/react";
 import { useLocation } from "wouter";
 
-import { getCurrentSubdomain } from "@shared/utils/subdomain";
+import { getAuth0OrgIdForCurrentEnv, getCurrentSubdomain } from "@shared/utils/subdomain";
 
 import { api } from "../../../../convex/_generated/api";
 
@@ -20,8 +20,9 @@ export default function LoginRedirectPage() {
     if (typeof window !== "undefined") {
       authorizationParams.redirect_uri = `${window.location.origin}/auth/callback`;
     }
-    if (org && (org as any).auth0OrgId) {
-      authorizationParams.organization = (org as any).auth0OrgId as string;
+    if (org) {
+      const oid = getAuth0OrgIdForCurrentEnv(org as any);
+      if (oid) authorizationParams.organization = oid;
     }
 
     void loginWithRedirect({ authorizationParams }).catch((error) => {

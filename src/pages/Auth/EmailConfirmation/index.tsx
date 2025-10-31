@@ -6,7 +6,7 @@ import { IconMail, IconMailCheck } from "@tabler/icons-react";
 import { useAction, useQuery } from "convex/react";
 import { useLocation } from "wouter";
 
-import { getCurrentSubdomain } from "@shared/utils/subdomain";
+import { getAuth0OrgIdForCurrentEnv, getCurrentSubdomain } from "@shared/utils/subdomain";
 
 import { api } from "../../../../convex/_generated/api";
 
@@ -70,7 +70,7 @@ export default function EmailConfirmationPage() {
       authorizationParams: {
         prompt: "login",
         redirect_uri: `${window.location.origin}/auth/callback`,
-        ...(org && (org as any).auth0OrgId ? { organization: (org as any).auth0OrgId } : {}),
+        ...(org && getAuth0OrgIdForCurrentEnv(org as any) ? { organization: getAuth0OrgIdForCurrentEnv(org as any) } : {}),
       },
       appState: {
         returnTo: "/onboarding",

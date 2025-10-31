@@ -30,6 +30,12 @@ function getManagementDomain(): string {
   return managementDomain;
 }
 
+function selectAuth0OrgIdForEnv(org: any): string | undefined {
+  const suffix = (process.env.APP_DOMAIN_SUFFIX || "").trim();
+  const isDev = suffix.includes(".dev.") || suffix === ".dev.whatthepack.today";
+  return isDev ? org?.auth0OrgIdDev || org?.auth0OrgId : org?.auth0OrgIdProd || org?.auth0OrgId;
+}
+
 async function getManagementAccessToken(): Promise<string> {
   const domain = getManagementDomain();
   const clientId = process.env.AUTH0_MGMT_CLIENT_ID!;
@@ -110,7 +116,7 @@ export const storeShipEngineToken = action({
       const org = await ctx.runQuery(internal.organizations.get, { orgId: args.orgId });
       if (!org) throw new Error("Organization not found");
 
-      let auth0OrgId = org.auth0OrgId;
+      let auth0OrgId = selectAuth0OrgIdForEnv(org);
 
       // IMPORTANT: Check if cached ID is valid Auth0 format (starts with "org_")
       if (auth0OrgId && !auth0OrgId.startsWith("org_")) {
@@ -221,8 +227,9 @@ export const checkShipEngineStatus = action({
 
     try {
       const org = await ctx.runQuery(internal.organizations.get, { orgId: args.orgId });
-      if (!org?.auth0OrgId) return { configured: false };
-      await getShipEngineApiKey(org.auth0OrgId);
+      const auth0OrgId = org ? selectAuth0OrgIdForEnv(org) : undefined;
+      if (!auth0OrgId) return { configured: false };
+      await getShipEngineApiKey(auth0OrgId);
       return { configured: true };
     } catch {
       return { configured: false };
@@ -295,7 +302,7 @@ export const inviteStaff = action({
         console.error("[inviteStaff] Unexpected create user response shape:", newUser);
         throw new Error("Auth0 user_id missing after user creation");
       }
-      let auth0OrgId = org.auth0OrgId as string | undefined;
+      let auth0OrgId = selectAuth0OrgIdForEnv(org) as string | undefined;
 
       // Ensure Auth0 Organization exists and sync its ID back to Convex if missing
       if (!auth0OrgId) {
@@ -531,7 +538,8 @@ export const removeStaff = action({
 
     // Remove user from Auth0 Organization membership, then deactivate locally
     const org = await ctx.runQuery(internal.organizations.get, { orgId: args.orgId });
-    if (!org?.auth0OrgId) throw new Error("Organization not linked to Auth0 (missing auth0OrgId)");
+    const auth0OrgId = org ? selectAuth0OrgIdForEnv(org) : undefined;
+    if (!auth0OrgId) throw new Error("Organization not linked to Auth0 (missing auth0OrgId for env)");
 
     if (!user.auth0Id) throw new Error("User missing auth0Id");
 
@@ -540,10 +548,10 @@ export const removeStaff = action({
       const membersClient = (mgmt.organizations as any)?.members;
       if (membersClient?.delete) {
         // v5 style
-        await membersClient.delete(org.auth0OrgId, { members: [user.auth0Id] });
+        await membersClient.delete(auth0OrgId, { members: [user.auth0Id] });
       } else if (typeof (mgmt.organizations as any).removeMembers === "function") {
         // legacy style
-        await (mgmt.organizations as any).removeMembers({ id: org.auth0OrgId }, { members: [user.auth0Id] });
+        await (mgmt.organizations as any).removeMembers({ id: auth0OrgId }, { members: [user.auth0Id] });
       }
     } catch (e) {
       console.warn("Auth0 remove member warning:", e);
@@ -633,19 +641,20 @@ export const updateStaffRole = action({
 
     // Load org
     const org = await ctx.runQuery(internal.organizations.get, { orgId: args.orgId });
-    if (!org?.auth0OrgId) throw new Error("Organization not linked to Auth0 (missing auth0OrgId)");
+    const envAuth0OrgId = org ? selectAuth0OrgIdForEnv(org) : undefined;
+    if (!envAuth0OrgId) throw new Error("Organization not linked to Auth0 (missing auth0OrgId for env)");
 
     try {
       const orgsAny: any = (mgmt as any).organizations;
       // Remove both admin/packer roles first
       if (orgsAny?.deleteMemberRoles) {
-        await orgsAny.deleteMemberRoles({ id: org.auth0OrgId, user_id: user.auth0Id }, { roles: [adminRoleId, packerRoleId] });
+        await orgsAny.deleteMemberRoles({ id: envAuth0OrgId, user_id: user.auth0Id }, { roles: [adminRoleId, packerRoleId] });
       } else if (orgsAny?.members?.roles?.remove) {
-        await orgsAny.members.roles.remove(org.auth0OrgId, user.auth0Id, { roles: [adminRoleId, packerRoleId] });
+        await orgsAny.members.roles.remove(envAuth0OrgId, user.auth0Id, { roles: [adminRoleId, packerRoleId] });
       } else {
         const token = await getManagementAccessToken();
         await fetch(
-          `https://${getManagementDomain()}/api/v2/organizations/${org.auth0OrgId}/members/${encodeURIComponent(user.auth0Id)}/roles`,
+          `https://${getManagementDomain()}/api/v2/organizations/${envAuth0OrgId}/members/${encodeURIComponent(user.auth0Id)}/roles`,
           {
             method: "DELETE",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -656,13 +665,13 @@ export const updateStaffRole = action({
 
       // Assign target role
       if (orgsAny?.addMemberRoles) {
-        await orgsAny.addMemberRoles({ id: org.auth0OrgId, user_id: user.auth0Id }, { roles: [targetRoleId] });
+        await orgsAny.addMemberRoles({ id: envAuth0OrgId, user_id: user.auth0Id }, { roles: [targetRoleId] });
       } else if (orgsAny?.members?.roles?.add) {
-        await orgsAny.members.roles.add(org.auth0OrgId, user.auth0Id, { roles: [targetRoleId] });
+        await orgsAny.members.roles.add(envAuth0OrgId, user.auth0Id, { roles: [targetRoleId] });
       } else {
         const token = await getManagementAccessToken();
         await fetch(
-          `https://${getManagementDomain()}/api/v2/organizations/${org.auth0OrgId}/members/${encodeURIComponent(user.auth0Id)}/roles`,
+          `https://${getManagementDomain()}/api/v2/organizations/${envAuth0OrgId}/members/${encodeURIComponent(user.auth0Id)}/roles`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },

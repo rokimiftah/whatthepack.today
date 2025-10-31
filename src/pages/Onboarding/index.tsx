@@ -31,7 +31,7 @@ import { IconAlertCircle, IconMail } from "@tabler/icons-react";
 import { useAction, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useLocation } from "wouter";
 
-import { buildOrgUrl, getCurrentSubdomain, isReservedSubdomain } from "@shared/utils/subdomain";
+import { buildOrgUrl, getAuth0OrgIdForCurrentEnv, getCurrentSubdomain, isReservedSubdomain } from "@shared/utils/subdomain";
 
 import { api } from "../../../convex/_generated/api";
 
@@ -74,6 +74,7 @@ export default function OnboardingPage() {
   const [resendingEmail, setResendingEmail] = useState(false);
   const [resendStatus, setResendStatus] = useState<"idle" | "pending" | "success" | "error">("idle");
   const [resendMessage, setResendMessage] = useState<string | null>(null);
+  const [autoLoginStarted, setAutoLoginStarted] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -92,6 +93,30 @@ export default function OnboardingPage() {
     isAuthenticated && subdomain ? fallbackOrgArgs : "skip",
   );
   const orgBySlug = useQuery(api.organizations.getBySlug, subdomain ? { slug: subdomain } : "skip");
+
+  // Auto-trigger login at onboarding: silent first, then interactive fallback
+  useEffect(() => {
+    if (isLoading || isAuthenticated || autoLoginStarted) return;
+    setAutoLoginStarted(true);
+    const run = async () => {
+      const redirectUri = typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : "";
+      const oid = subdomain && orgBySlug ? (getAuth0OrgIdForCurrentEnv(orgBySlug as any) as string | undefined) : undefined;
+      const silentParams: Record<string, string> = { prompt: "none", redirect_uri: redirectUri };
+      if (oid) silentParams.organization = oid;
+      try {
+        await loginWithRedirect({ authorizationParams: silentParams, appState: { returnTo: "/onboarding" } });
+      } catch {
+        const params: Record<string, string> = { redirect_uri: redirectUri };
+        if (oid) params.organization = oid;
+        try {
+          await loginWithRedirect({ authorizationParams: params, appState: { returnTo: "/onboarding" } });
+        } catch {
+          // Button fallback below will remain visible
+        }
+      }
+    };
+    void run();
+  }, [isLoading, isAuthenticated, autoLoginStarted, loginWithRedirect, subdomain, orgBySlug]);
 
   const orgResult = organizationResult as OrgQueryResult;
   const fallbackResult = organizationFallbackResult as OrgQueryResult;
@@ -187,12 +212,26 @@ export default function OnboardingPage() {
 
   useEffect(() => {
     if (organizationResult?.organization?.onboardingCompleted) {
+      const slug = organizationResult.organization.slug;
+      const current = getCurrentSubdomain();
+      if (typeof window !== "undefined" && slug && slug !== current) {
+        const orgUrl = buildOrgUrl(slug, "/dashboard");
+        window.location.replace(orgUrl);
+        return;
+      }
       navigate("/dashboard", { replace: true });
     }
-  }, [organizationResult?.organization?.onboardingCompleted, navigate]);
+  }, [organizationResult?.organization?.onboardingCompleted, organizationResult?.organization?.slug, navigate]);
 
   useEffect(() => {
     if (!noOrg && org && org.onboardingCompleted) {
+      const slug = org.slug;
+      const current = getCurrentSubdomain();
+      if (typeof window !== "undefined" && slug && slug !== current) {
+        const orgUrl = buildOrgUrl(slug, "/dashboard");
+        window.location.replace(orgUrl);
+        return;
+      }
       navigate("/dashboard", { replace: true });
     }
   }, [noOrg, org, navigate]);
@@ -233,16 +272,16 @@ export default function OnboardingPage() {
   if (!isAuthenticated) {
     return (
       <FullscreenMessage
-        title="Sign in to continue"
-        description="You need to sign in with your owner account to complete onboarding."
+        title="Signing you in…"
+        description="We are preparing your secure session. If nothing happens, click the button below."
         actions={
           <Button
             size="md"
             onClick={() =>
               loginWithRedirect({
                 authorizationParams:
-                  subdomain && orgBySlug && (orgBySlug as any).auth0OrgId
-                    ? { organization: (orgBySlug as any).auth0OrgId as string }
+                  subdomain && orgBySlug && getAuth0OrgIdForCurrentEnv(orgBySlug as any)
+                    ? { organization: getAuth0OrgIdForCurrentEnv(orgBySlug as any) as string }
                     : undefined,
               })
             }

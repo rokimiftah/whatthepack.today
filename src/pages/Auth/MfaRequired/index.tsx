@@ -6,7 +6,7 @@ import { IconArrowRight, IconShieldCheck, IconShieldExclamation } from "@tabler/
 import { useConvexAuth, useQuery } from "convex/react";
 import { useLocation } from "wouter";
 
-import { getCurrentSubdomain } from "@shared/utils/subdomain";
+import { getAuth0OrgIdForCurrentEnv, getCurrentSubdomain } from "@shared/utils/subdomain";
 
 import { api } from "../../../../convex/_generated/api";
 
@@ -22,8 +22,9 @@ export default function MfaRequiredPage() {
   useEffect(() => {
     if (!isAuthenticated && !isLoading) {
       const authorizationParams: Record<string, string> = {};
-      if (org && (org as any).auth0OrgId) {
-        authorizationParams.organization = (org as any).auth0OrgId as string;
+      if (org) {
+        const oid = getAuth0OrgIdForCurrentEnv(org as any);
+        if (oid) authorizationParams.organization = oid;
       }
       void loginWithRedirect({ authorizationParams });
     }
@@ -115,8 +116,9 @@ export default function MfaRequiredPage() {
                 rightSection={<IconArrowRight size={16} />}
                 onClick={() => {
                   const authorizationParams: Record<string, string> = { prompt: "login" };
-                  if (org && (org as any).auth0OrgId) {
-                    authorizationParams.organization = (org as any).auth0OrgId as string;
+                  if (org) {
+                    const oid = getAuth0OrgIdForCurrentEnv(org as any);
+                    if (oid) authorizationParams.organization = oid;
                   }
                   loginWithRedirect({ authorizationParams });
                 }}
