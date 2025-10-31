@@ -445,18 +445,27 @@ export default function OnboardingPage() {
             console.warn("[Onboarding] ensureOrgLoginReady failed", (e as any)?.message || e);
           }
 
-          // Silent re-auth into the new org to avoid showing login page again
-          const authorizationParams: Record<string, string> = {
-            prompt: "none",
-            redirect_uri: orgUrl,
-          };
-          if ((result as any)?.auth0OrgId) {
-            authorizationParams.organization = (result as any).auth0OrgId as string;
+          // Try silent login into the new org; fall back to interactive
+          const baseParams: Record<string, string> = { redirect_uri: orgUrl };
+          const orgId = (result as any)?.auth0OrgId as string | undefined;
+          try {
+            await loginWithRedirect({
+              authorizationParams: {
+                ...baseParams,
+                ...(orgId ? { organization: orgId } : {}),
+                prompt: "none",
+              },
+              appState: { returnTo: "/dashboard" },
+            });
+          } catch {
+            await loginWithRedirect({
+              authorizationParams: {
+                ...baseParams,
+                ...(orgId ? { organization: orgId } : {}),
+              },
+              appState: { returnTo: "/dashboard" },
+            });
           }
-          await loginWithRedirect({
-            authorizationParams,
-            appState: { returnTo: "/dashboard" },
-          });
           return;
         }
 
@@ -487,8 +496,28 @@ export default function OnboardingPage() {
           window.location.hostname.includes("localhost"));
 
       if (!isLocalhost && finalSlug !== subdomain && typeof window !== "undefined") {
-        const orgUrl = buildOrgUrl(finalSlug, "/dashboard");
-        window.location.href = orgUrl;
+        const orgCallbackUrl = buildOrgUrl(finalSlug, "/auth/callback");
+        const orgId = (org as any)?.auth0OrgIdProd || (org as any)?.auth0OrgIdDev || (org as any)?.auth0OrgId;
+
+        // Silence first, then interactive to ensure session on slug domain
+        try {
+          await loginWithRedirect({
+            authorizationParams: {
+              redirect_uri: orgCallbackUrl,
+              ...(orgId ? { organization: orgId as string } : {}),
+              prompt: "none",
+            },
+            appState: { returnTo: "/dashboard" },
+          });
+        } catch {
+          await loginWithRedirect({
+            authorizationParams: {
+              redirect_uri: orgCallbackUrl,
+              ...(orgId ? { organization: orgId as string } : {}),
+            },
+            appState: { returnTo: "/dashboard" },
+          });
+        }
         return;
       }
 
