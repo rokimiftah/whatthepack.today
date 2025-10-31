@@ -6,6 +6,7 @@ import { useAuth0 } from "@auth0/auth0-react";
 import { Anchor, Box, Button, Center, Container, Loader, Paper, Stack, Text, Title } from "@mantine/core";
 import { useAction, useConvexAuth, useQuery } from "convex/react";
 
+import { canTriggerLogin, markLoginStarted } from "@shared/utils/authFlow";
 import { buildOrgUrl, getAuth0OrgIdForCurrentEnv, getCurrentSubdomain } from "@shared/utils/subdomain";
 
 import { api } from "../../../convex/_generated/api";
@@ -81,6 +82,8 @@ export default function DashboardPlaceholder() {
       } catch {}
       const authorizationParams: Record<string, string> = {};
       if (orgId) authorizationParams.organization = orgId;
+      if (!canTriggerLogin()) return;
+      markLoginStarted();
       void loginWithRedirect({ authorizationParams }).catch(() => {
         // allow UI fallback below
       });

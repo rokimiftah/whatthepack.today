@@ -7,6 +7,7 @@ import { Center, Loader, Stack, Text } from "@mantine/core";
 import { useQuery } from "convex/react";
 import { useLocation } from "wouter";
 
+import { clearLoginMarker } from "@shared/utils/authFlow";
 import { getAuth0OrgIdForCurrentEnv, getCurrentSubdomain } from "@shared/utils/subdomain";
 
 import { api } from "../../../../convex/_generated/api";
@@ -44,6 +45,8 @@ export default function CallbackPage() {
   }, [error]);
 
   useEffect(() => {
+    // Reaching callback means we no longer need the in-flight marker
+    clearLoginMarker();
     // If Auth0 sign-in failed with org-membership error, immediately retry WITHOUT organization
     if (!retriedNoOrgRef.current && shouldRetryNoOrg) {
       retriedNoOrgRef.current = true;

@@ -31,6 +31,7 @@ import { IconAlertCircle, IconMail } from "@tabler/icons-react";
 import { useAction, useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useLocation } from "wouter";
 
+import { canTriggerLogin, clearLoginMarker, markLoginStarted } from "@shared/utils/authFlow";
 import { buildOrgUrl, getAuth0OrgIdForCurrentEnv, getCurrentSubdomain, isReservedSubdomain } from "@shared/utils/subdomain";
 
 import { api } from "../../../convex/_generated/api";
@@ -82,6 +83,8 @@ export default function OnboardingPage() {
     if (params.get("verified") === "true") {
       window.history.replaceState({}, "", "/onboarding");
     }
+    // Entering onboarding clears any stale inflight marker
+    clearLoginMarker();
   }, []);
 
   const scopedOrgArgs = useMemo(() => (subdomain ? { expectedSlug: subdomain } : {}), [subdomain]);
@@ -104,11 +107,15 @@ export default function OnboardingPage() {
       const silentParams: Record<string, string> = { prompt: "none", redirect_uri: redirectUri };
       if (oid) silentParams.organization = oid;
       try {
+        if (!canTriggerLogin()) return;
+        markLoginStarted();
         await loginWithRedirect({ authorizationParams: silentParams, appState: { returnTo: "/onboarding" } });
       } catch {
         const params: Record<string, string> = { redirect_uri: redirectUri };
         if (oid) params.organization = oid;
         try {
+          if (!canTriggerLogin()) return;
+          markLoginStarted();
           await loginWithRedirect({ authorizationParams: params, appState: { returnTo: "/onboarding" } });
         } catch {
           // Button fallback below will remain visible
