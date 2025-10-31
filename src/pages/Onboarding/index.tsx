@@ -271,25 +271,9 @@ export default function OnboardingPage() {
 
   if (!isAuthenticated) {
     return (
-      <FullscreenMessage
-        title="Signing you in…"
-        description="We are preparing your secure session. If nothing happens, click the button below."
-        actions={
-          <Button
-            size="md"
-            onClick={() =>
-              loginWithRedirect({
-                authorizationParams:
-                  subdomain && orgBySlug && getAuth0OrgIdForCurrentEnv(orgBySlug as any)
-                    ? { organization: getAuth0OrgIdForCurrentEnv(orgBySlug as any) as string }
-                    : undefined,
-              })
-            }
-          >
-            Sign in with Auth0
-          </Button>
-        }
-      />
+      <div className="flex min-h-screen flex-col items-center justify-center bg-black text-white">
+        <Loader size="xl" type="dots" />
+      </div>
     );
   }
 
