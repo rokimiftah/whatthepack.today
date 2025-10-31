@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 
 import { useAuth0 } from "@auth0/auth0-react";
 import { Anchor, Box, Button, Center, Container, Loader, Paper, Stack, Text, Title } from "@mantine/core";
-import { useConvexAuth, useQuery } from "convex/react";
+import { useAction, useConvexAuth, useQuery } from "convex/react";
 
 import { buildOrgUrl, getAuth0OrgIdForCurrentEnv, getCurrentSubdomain } from "@shared/utils/subdomain";
 
@@ -40,6 +40,7 @@ export default function DashboardPlaceholder() {
   const loginStartedRef = useRef(false);
 
   const subdomainValidation = useQuery(api.organizations.getBySlug, subdomain ? { slug: subdomain } : "skip");
+  const ensureOrgLoginReady = useAction(api.onboarding.ensureOrgLoginReady);
 
   const organizationResult = useQuery(
     api.organizations.getForCurrentUser,
@@ -68,13 +69,23 @@ export default function DashboardPlaceholder() {
     if (subdomainValidation === undefined) return; // wait until we know the org exists
     if (loginStartedRef.current) return;
     loginStartedRef.current = true;
-    const oid = subdomainValidation ? (getAuth0OrgIdForCurrentEnv(subdomainValidation as any) as string | undefined) : undefined;
-    const authorizationParams: Record<string, string> = {};
-    if (oid) authorizationParams.organization = oid;
-    void loginWithRedirect({ authorizationParams }).catch(() => {
-      // allow UI fallback below
-    });
-  }, [isLoading, isAuthenticated, subdomain, subdomainValidation, loginWithRedirect]);
+    (async () => {
+      let orgId: string | undefined = subdomainValidation
+        ? (getAuth0OrgIdForCurrentEnv(subdomainValidation as any) as string | undefined)
+        : undefined;
+      try {
+        if (subdomain) {
+          const ensured = await ensureOrgLoginReady({ slug: subdomain });
+          orgId = ((ensured as any)?.auth0OrgId as string | undefined) || orgId;
+        }
+      } catch {}
+      const authorizationParams: Record<string, string> = {};
+      if (orgId) authorizationParams.organization = orgId;
+      void loginWithRedirect({ authorizationParams }).catch(() => {
+        // allow UI fallback below
+      });
+    })();
+  }, [isLoading, isAuthenticated, subdomain, subdomainValidation, loginWithRedirect, ensureOrgLoginReady]);
 
   if (subdomain && subdomainValidation === undefined) {
     return (

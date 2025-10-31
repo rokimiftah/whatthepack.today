@@ -605,7 +605,7 @@ function MarketingLanding() {
 
 function TenantRoot() {
   const subdomain = getCurrentSubdomain();
-  const { loginWithRedirect, logout } = useAuth0();
+  const { loginWithRedirect } = useAuth0();
   const { isAuthenticated, isLoading } = useConvexAuth();
   const [location, navigate] = useLocation();
   const syncCurrentUser = useMutation(api.users.syncCurrentUser);
@@ -647,12 +647,14 @@ function TenantRoot() {
 
     // If not authenticated, auto-redirect to Auth0 login with organization
     if (!isAuthenticated && subdomainValidation !== null) {
-      const auth0OrgId = getAuth0OrgIdForCurrentEnv(subdomainValidation as any);
+      const precomputedOrgId = getAuth0OrgIdForCurrentEnv(subdomainValidation as any);
       console.log("[TenantRoot] Not authenticated, preparing org connection then redirecting to Auth0 login...");
       (async () => {
+        let ensuredOrgId: string | undefined;
         try {
           if (subdomain) {
-            await ensureOrgLoginReady({ slug: subdomain });
+            const ensured = await ensureOrgLoginReady({ slug: subdomain });
+            ensuredOrgId = (ensured as any)?.auth0OrgId as string | undefined;
           }
         } catch (e) {
           console.warn("[TenantRoot] ensureOrgLoginReady failed", (e as any)?.message || e);
@@ -660,7 +662,8 @@ function TenantRoot() {
         const search = typeof window !== "undefined" ? window.location.search : "";
         const isSignupIntent = search.includes("action=signup");
         const authorizationParams: Record<string, string> = {};
-        if (auth0OrgId) authorizationParams.organization = auth0OrgId;
+        const orgParam = ensuredOrgId || precomputedOrgId;
+        if (orgParam) authorizationParams.organization = orgParam;
         if (isSignupIntent) authorizationParams.screen_hint = "signup";
         void loginWithRedirect({ authorizationParams });
       })();
@@ -689,22 +692,15 @@ function TenantRoot() {
     const org = organizationResult.organization;
     const orgSlug = org.slug;
 
-    // SECURITY: If user has org but is on wrong subdomain, logout and redirect to correct subdomain
+    // SECURITY: If user has org but is on wrong subdomain, redirect to correct subdomain (keep session)
     if (orgSlug && orgSlug !== subdomain) {
       console.log("[TenantRoot] User on wrong subdomain, redirecting to org subdomain...");
       console.log("[TenantRoot] Current subdomain:", subdomain, "Expected:", orgSlug);
-      console.log("[TenantRoot] Logging out and redirecting for re-authentication...");
-
       const correctUrl = buildOrgUrl(orgSlug, location);
       console.log("[TenantRoot] Redirecting to:", correctUrl);
-
-      // Logout first, then redirect to correct subdomain
-      // User will need to sign in again at the correct org subdomain
-      void logout({
-        logoutParams: {
-          returnTo: correctUrl,
-        },
-      });
+      if (typeof window !== "undefined") {
+        window.location.replace(correctUrl);
+      }
       return;
     }
 
@@ -718,7 +714,7 @@ function TenantRoot() {
     if (location !== "/dashboard") {
       navigate("/dashboard", { replace: true });
     }
-  }, [isAuthenticated, isLoading, organizationResult, sessionMetadata, navigate, location, subdomain, logout]);
+  }, [isAuthenticated, isLoading, organizationResult, sessionMetadata, navigate, location, subdomain]);
 
   if (!subdomain) {
     return (
