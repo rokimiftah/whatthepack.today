@@ -442,7 +442,7 @@ export const inviteStaff = action({
         if (ticketsAny?.createPasswordChangeTicket) {
           const ticketResp = await ticketsAny.createPasswordChangeTicket({
             user_id: auth0UserId,
-            result_url: buildOrgUrl(org.slug, "/auth/login-redirect"),
+            result_url: buildOrgUrl(org.slug, "/login"),
             ttl_sec: 86400,
             mark_email_as_verified: true,
           });
@@ -450,7 +450,7 @@ export const inviteStaff = action({
         } else if (ticketsAny?.create) {
           const ticketResp = await ticketsAny.create({
             user_id: auth0UserId,
-            result_url: buildOrgUrl(org.slug, "/auth/login-redirect"),
+            result_url: buildOrgUrl(org.slug, "/login"),
             ttl_sec: 86400,
             mark_email_as_verified: true,
           });
@@ -463,7 +463,7 @@ export const inviteStaff = action({
       if (!ticketUrl) {
         ticketUrl = await createPasswordChangeTicketRaw({
           user_id: auth0UserId,
-          result_url: buildOrgUrl(org.slug, "/auth/login-redirect"),
+          result_url: buildOrgUrl(org.slug, "/login"),
           ttl_sec: 86400,
         });
       }
