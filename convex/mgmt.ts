@@ -7,6 +7,7 @@ import { api, internal } from "./_generated/api";
 import { action } from "./_generated/server";
 import { requireRole } from "./auth";
 import { checkRateLimit, validateEmail } from "./security";
+import { buildOrgUrl } from "./utils/urls";
 
 // Initialize Auth0 Management Client
 function getManagementClient() {
@@ -262,7 +263,7 @@ export const inviteStaff = action({
           verify_email: false,
         };
         // Do not use username; set display name when provided
-        if (args.name && args.name.trim()) payload.name = args.name.trim();
+        if (args.name?.trim()) payload.name = args.name.trim();
 
         try {
           newUser = await mgmt.users.create(payload as any);
@@ -434,7 +435,7 @@ export const inviteStaff = action({
         if (ticketsAny?.createPasswordChangeTicket) {
           const ticketResp = await ticketsAny.createPasswordChangeTicket({
             user_id: auth0UserId,
-            result_url: `https://${org.slug}.whatthepack.today/login`,
+            result_url: buildOrgUrl(org.slug, "/login"),
             ttl_sec: 86400,
             mark_email_as_verified: true,
           });
@@ -442,7 +443,7 @@ export const inviteStaff = action({
         } else if (ticketsAny?.create) {
           const ticketResp = await ticketsAny.create({
             user_id: auth0UserId,
-            result_url: `https://${org.slug}.whatthepack.today/login`,
+            result_url: buildOrgUrl(org.slug, "/login"),
             ttl_sec: 86400,
             mark_email_as_verified: true,
           });
@@ -455,7 +456,7 @@ export const inviteStaff = action({
       if (!ticketUrl) {
         ticketUrl = await createPasswordChangeTicketRaw({
           user_id: auth0UserId,
-          result_url: `https://${org.slug}.whatthepack.today/login`,
+          result_url: buildOrgUrl(org.slug, "/login"),
           ttl_sec: 86400,
         });
       }

@@ -34,6 +34,7 @@ import type * as security from "../security.js";
 import type * as testing from "../testing.js";
 import type * as users from "../users.js";
 import type * as utils_llm from "../utils/llm.js";
+import type * as utils_urls from "../utils/urls.js";
 import type * as vapi from "../vapi.js";
 import type * as vapi_node from "../vapi_node.js";
 
@@ -78,6 +79,7 @@ declare const fullApi: ApiFromModules<{
   testing: typeof testing;
   users: typeof users;
   "utils/llm": typeof utils_llm;
+  "utils/urls": typeof utils_urls;
   vapi: typeof vapi;
   vapi_node: typeof vapi_node;
 }>;

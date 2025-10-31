@@ -5,6 +5,7 @@ import { v } from "convex/values";
 import { api, internal } from "../_generated/api";
 import { internalAction } from "../_generated/server";
 import { sendEmail } from "../emails";
+import { buildOrgUrl } from "../utils/urls";
 
 // Send stock alert notification
 export const sendStockAlert = internalAction({
@@ -70,7 +71,7 @@ export const sendStockAlert = internalAction({
             reportTime: new Date().toLocaleString(),
             warehouseLocation: product.warehouseLocation,
             lowStockThreshold: 5, // Could be configurable per product
-            reorderLink: `https://${org.slug}.whatthepack.today/inventory`, // Future page
+            reorderLink: buildOrgUrl(org.slug, "/inventory"), // Future page
           },
         });
       });
@@ -153,7 +154,7 @@ export const sendOrderFailureAlert = internalAction({
             customerName: order.recipientName,
             error: args.error,
             failureTime: new Date().toLocaleString(),
-            orderLink: `https://${org.slug}.whatthepack.today/orders/${order._id}`,
+            orderLink: buildOrgUrl(org.slug, `/orders/${order._id}`),
           },
         });
       });
@@ -258,7 +259,7 @@ export const sendDailyBriefing = internalAction({
               stockQuantity: p.stockQuantity,
             })),
             packerStats,
-            dashboardLink: `https://${org.slug}.whatthepack.today/dashboard`,
+            dashboardLink: buildOrgUrl(org.slug, "/dashboard"),
           },
         });
       });
@@ -325,7 +326,7 @@ export const sendStaffWelcomeEmail = internalAction({
           staffName: user.name,
           staffRole: user.role,
           setupLink: args.ticketUrl,
-          loginUrl: `https://${org.slug}.whatthepack.today/login`,
+          loginUrl: buildOrgUrl(org.slug, "/login"),
           supportEmail: "support@whatthepack.today",
         },
       });

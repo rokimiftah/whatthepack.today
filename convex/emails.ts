@@ -5,6 +5,7 @@ import { Resend } from "resend";
 
 import { internal } from "./_generated/api";
 import { action, internalMutation, internalQuery } from "./_generated/server";
+import { buildOrgUrl } from "./utils/urls";
 
 const resend = new Resend(process.env.RESEND_API_KEY!);
 
@@ -24,7 +25,7 @@ export const sendStaffInvite = action({
     const to = args.email;
     const subject = `You're Invited to ${org.name} on What The Pack`;
     const staffName = args.name || to.split("@")[0];
-    const loginUrl = `https://${org.slug}.whatthepack.today/login`;
+    const loginUrl = buildOrgUrl(org.slug, "/login");
 
     const data = {
       organizationName: org.name,
@@ -125,7 +126,7 @@ export const sendStockAlert = action({
         <p><strong>Current Stock:</strong> ${args.currentStock}</p>
         <p><strong>Reported By:</strong> ${args.reportedBy}</p>
         <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
-        <a class="button" href="https://${org.slug}.whatthepack.today/inventory">View Inventory</a>
+        <a class="button" href="${buildOrgUrl(org.slug, "/inventory")}">View Inventory</a>
       </div>
       <p class="footer">This is an automated notification from What The Pack</p>
     </div>
@@ -145,7 +146,7 @@ export const sendStockAlert = action({
 
       Recommended Action: Contact your vendor immediately to reorder this product.
 
-      View inventory at: https://${org.slug}.whatthepack.today/inventory
+      View inventory at: ${buildOrgUrl(org.slug, "/inventory")}
 
       ---
       This is an automated notification from What The Pack
@@ -377,7 +378,7 @@ export const sendOrderFailure = action({
       <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
       <p>Please review this order and take appropriate action.</p>
       <a
-        href="https://${org.slug}.whatthepack.today/orders/${args.orderNumber}"
+        href="${buildOrgUrl(org.slug, `/orders/${args.orderNumber}`)}"
         style="
           display: inline-block;
           background: #1f2937;

@@ -2,6 +2,8 @@ import type * as React from "react";
 
 import { Body, Container, Head, Hr, Html, Link, Section, Text } from "@react-email/components";
 
+import { getDomainSuffix } from "../../utils/urls";
+
 export function StockAlertEmail(props: {
   orgName: string;
   orgSlug: string;
@@ -36,7 +38,7 @@ export function StockAlertEmail(props: {
             </Text>
             <Hr style={{ borderColor: "#eee", margin: "16px 0" }} />
             <Text>Recommended action: Contact your vendor to reorder this product.</Text>
-            <Link href={`https://${orgSlug}.whatthepack.today/inventory`} style={styles.button}>
+            <Link href={`https://${orgSlug}${getDomainSuffix()}/inventory`} style={styles.button}>
               View Inventory
             </Link>
           </Section>
