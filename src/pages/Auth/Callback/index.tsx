@@ -22,6 +22,7 @@ export default function CallbackPage() {
   const { isLoading, isAuthenticated, error, user, logout, loginWithRedirect } = useAuth0();
   const [, setLocation] = useLocation();
   const hasHandledRef = useRef(false);
+  const retriedNoOrgRef = useRef(false);
   const subdomain = getCurrentSubdomain();
 
   // Check if user has completed onboarding
@@ -32,6 +33,13 @@ export default function CallbackPage() {
   const sessionMetadata = useQuery(api.auth.getSessionMetadata, isAuthenticated ? {} : "skip");
 
   useEffect(() => {
+    // If Auth0 SDK surfaced an error that the user isn't part of the org, retry WITHOUT the organization param
+    if (!retriedNoOrgRef.current && error && /is not part of the org_/i.test(error.message || "")) {
+      retriedNoOrgRef.current = true;
+      void loginWithRedirect({ authorizationParams: {} }).catch(() => {});
+      return;
+    }
+
     // Fallback: if Auth0 returned access_denied "not part of the org_*", retry login WITHOUT organization param
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -100,6 +108,16 @@ export default function CallbackPage() {
   }, [isLoading, isAuthenticated, organizationResult, sessionMetadata, setLocation, user, logout, loginWithRedirect]);
 
   if (error) {
+    // If we've triggered a retry already, just show a loader; otherwise show the error
+    if (retriedNoOrgRef.current) {
+      return (
+        <Center style={{ height: "100vh" }}>
+          <Stack align="center" gap="md">
+            <Loader size="xl" type="dots" />
+          </Stack>
+        </Center>
+      );
+    }
     return (
       <Center style={{ height: "100vh" }}>
         <Stack align="center" gap="md">

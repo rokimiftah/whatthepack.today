@@ -26,6 +26,14 @@ export default function LoginRedirectPage() {
 
     void loginWithRedirect({ authorizationParams }).catch((error) => {
       console.error("Auth0 login redirect failed", error);
+      const msg = (error && (error.message || error.error_description)) || "";
+      if (/is not part of the org_/i.test(msg)) {
+        // Retry without organization parameter
+        void loginWithRedirect({ authorizationParams: { redirect_uri: authorizationParams.redirect_uri } }).catch(() => {
+          navigate("/", { replace: true });
+        });
+        return;
+      }
       navigate("/", { replace: true });
     });
   }, [loginWithRedirect, navigate, org]);
