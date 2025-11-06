@@ -1,6 +1,16 @@
 import { useState } from "react";
 
-import { Badge, Loader, Paper, Stack, Text, Title } from "@mantine/core";
+import { Badge, Button, Card, Group, Loader, Paper, PasswordInput, Stack, Text, ThemeIcon, Title } from "@mantine/core";
+import {
+  IconCircleCheck,
+  IconCreditCard,
+  IconInfoCircle,
+  IconKey,
+  IconLock,
+  IconPlug,
+  IconShieldCheck,
+  IconTruck,
+} from "@tabler/icons-react";
 import { useAction, useQuery } from "convex/react";
 
 import { api } from "../../../convex/_generated/api";
@@ -39,93 +49,176 @@ export default function IntegrationsPage() {
   // Loading state
   if (org === undefined || shipEngineStatus === undefined) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-black text-white">
-        <Loader size="xl" type="dots" />
-      </div>
+      <Stack gap="xl" align="center" justify="center" style={{ minHeight: "60vh" }}>
+        <Loader size="xl" type="dots" color="violet" />
+        <Text size="sm" c="dimmed">
+          Loading integrations...
+        </Text>
+      </Stack>
     );
   }
 
   return (
-    <Stack gap="lg">
-      <Stack gap={2}>
-        <Text size="xs" tt="uppercase" fw={600} c="gray.6" lts={4}>
-          Integrations
-        </Text>
-        <Title order={2}>{org?.organization?.name}</Title>
-      </Stack>
-
-      <Paper withBorder radius="xl" bg="white" p="lg">
-        <Stack gap="md">
-          <Stack gap={2}>
-            <Title order={3}>ShipEngine</Title>
-            <Text size="sm" c="gray.6">
-              Courier integration for automatic shipping label purchase
+    <Stack gap="xl">
+      <Paper p="lg" radius="lg" bg="white" style={{ border: "1px solid var(--mantine-color-gray-2)" }}>
+        <Group gap="md">
+          <ThemeIcon size={48} radius="lg" variant="light" color="violet">
+            <IconPlug size={28} />
+          </ThemeIcon>
+          <Stack gap={4}>
+            <Title order={2} fw={700}>
+              Integrations
+            </Title>
+            <Text size="sm" c="dimmed">
+              Connect your business tools and services
             </Text>
           </Stack>
-          {isConnected && (
-            <Badge variant="light" color="green" w="fit-content">
-              Connected
-            </Badge>
-          )}
+        </Group>
+      </Paper>
+
+      <Card withBorder shadow="sm" radius="lg" bg="white" p="xl">
+        <Stack gap="lg">
+          <Group justify="space-between" align="flex-start">
+            <Group gap="md">
+              <ThemeIcon size={64} radius="lg" variant="light" color={isConnected ? "green" : "blue"}>
+                <IconTruck size={36} />
+              </ThemeIcon>
+              <Stack gap={4}>
+                <Title order={3} fw={700}>
+                  ShipEngine
+                </Title>
+                <Text size="sm" c="dimmed">
+                  Courier integration for automatic shipping label purchase
+                </Text>
+              </Stack>
+            </Group>
+            {isConnected && (
+              <Badge
+                variant="light"
+                color="green"
+                size="xl"
+                radius="lg"
+                leftSection={
+                  <ThemeIcon size="xs" color="green" variant="transparent">
+                    <IconCircleCheck size={16} />
+                  </ThemeIcon>
+                }
+              >
+                Connected
+              </Badge>
+            )}
+          </Group>
 
           {!isConnected ? (
-            <form onSubmit={handleSave} className="space-y-4">
-              <div>
-                <label htmlFor="shipengine-key" className="mb-2 block text-sm font-medium">
-                  API Key
-                </label>
-                <input
-                  id="shipengine-key"
-                  type="password"
+            <form onSubmit={handleSave}>
+              <Stack gap="lg">
+                <PasswordInput
+                  label="ShipEngine API Key"
+                  placeholder="TEST_xxxxx or prod_xxxxx"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="TEST_xxxxx or prod_xxxxx"
-                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2 placeholder:text-neutral-500 focus:border-gray-400 focus:outline-none"
                   required
+                  radius="lg"
+                  size="md"
+                  leftSection={<IconKey size={16} />}
+                  description={
+                    <Text size="xs" c="dimmed" mt={4}>
+                      Get your API key from{" "}
+                      <Text
+                        component="a"
+                        href="https://shipengine.com"
+                        target="_blank"
+                        rel="noreferrer"
+                        size="xs"
+                        c="blue"
+                        td="underline"
+                      >
+                        ShipEngine Dashboard
+                      </Text>
+                    </Text>
+                  }
+                  styles={{
+                    input: { fontWeight: 500 },
+                    description: { marginBottom: 12 },
+                  }}
                 />
-                <p className="mt-1 text-xs text-neutral-500">
-                  Get your API key from{" "}
-                  <a href="https://shipengine.com" target="_blank" rel="noreferrer" className="underline">
-                    ShipEngine Dashboard
-                  </a>
-                </p>
-              </div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="rounded-lg border border-gray-400 px-6 py-2 disabled:opacity-50"
-              >
-                {loading ? "Connecting..." : "Connect ShipEngine"}
-              </button>
+                <Group>
+                  <Button
+                    type="submit"
+                    loading={loading}
+                    leftSection={<IconPlug size={16} />}
+                    radius="lg"
+                    size="md"
+                    disabled={loading}
+                  >
+                    {loading ? "Connecting..." : "Connect ShipEngine"}
+                  </Button>
+                </Group>
+              </Stack>
             </form>
           ) : (
-            <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-4 text-sm text-green-700">
-              ✓ Your courier integration is active. Shipping labels will be purchased automatically when orders are processed.
-            </div>
+            <Paper p="lg" radius="lg" bg="green.0" style={{ border: "1px solid var(--mantine-color-green-2)" }}>
+              <Group gap="md">
+                <ThemeIcon size="lg" radius="lg" color="green" variant="light">
+                  <IconCircleCheck size={20} />
+                </ThemeIcon>
+                <Stack gap={4}>
+                  <Text fw={600} c="green.8">
+                    Integration Active
+                  </Text>
+                  <Text size="sm" c="green.7">
+                    Shipping labels will be purchased automatically when orders are processed.
+                  </Text>
+                </Stack>
+              </Group>
+            </Paper>
           )}
         </Stack>
-      </Paper>
+      </Card>
 
-      <Paper withBorder radius="xl" bg="white" p="lg" className="opacity-80">
-        <Title order={3}>Payment Gateway</Title>
-        <Text size="sm" c="gray.6">
-          Coming soon
-        </Text>
-      </Paper>
+      <Card withBorder shadow="sm" radius="lg" bg="white" p="xl" style={{ opacity: 0.6 }}>
+        <Group gap="md">
+          <ThemeIcon size={64} radius="lg" variant="light" color="gray">
+            <IconCreditCard size={36} />
+          </ThemeIcon>
+          <Stack gap={4}>
+            <Title order={3} fw={700} c="dimmed">
+              Payment Gateway
+            </Title>
+            <Badge variant="light" color="gray" size="lg" radius="lg">
+              Coming Soon
+            </Badge>
+          </Stack>
+        </Group>
+      </Card>
 
-      <Paper withBorder radius="xl" bg="white" p="lg">
-        <Stack gap="xs">
-          <Title order={4}>About Integrations</Title>
-          <Text c="gray.6">
-            WhatThePack securely stores your API keys using Auth0 Organization Metadata. Your keys are encrypted at rest and only
-            accessed by our AI agents when needed to process orders.
-          </Text>
-          <Text size="xs" c="gray.6">
-            Your staff (admin and packer) will never see your API keys. They can trigger actions (like purchasing shipping labels)
-            without having access to your credentials.
-          </Text>
-        </Stack>
-      </Paper>
+      <Card withBorder shadow="sm" radius="lg" bg="blue.0" p="lg" style={{ border: "1px solid var(--mantine-color-blue-2)" }}>
+        <Group gap="md" align="flex-start">
+          <ThemeIcon size="lg" radius="lg" color="blue" variant="light">
+            <IconShieldCheck size={20} />
+          </ThemeIcon>
+          <Stack gap="sm" style={{ flex: 1 }}>
+            <Group gap="xs">
+              <IconInfoCircle size={18} color="var(--mantine-color-blue-6)" />
+              <Title order={4} c="blue.8" fw={700}>
+                Security & Privacy
+              </Title>
+            </Group>
+            <Text size="sm" c="blue.8">
+              WhatThePack securely stores your API keys using Auth0 Organization Metadata. Your keys are encrypted at rest and
+              only accessed by our AI agents when needed to process orders.
+            </Text>
+            <Group gap="xs">
+              <ThemeIcon size="sm" radius="lg" color="blue" variant="light">
+                <IconLock size={12} />
+              </ThemeIcon>
+              <Text size="sm" c="blue.7" fw={500}>
+                Your staff will never see your API keys. They can trigger actions without accessing your credentials.
+              </Text>
+            </Group>
+          </Stack>
+        </Group>
+      </Card>
     </Stack>
   );
 }

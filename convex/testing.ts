@@ -426,3 +426,111 @@ export const seedOwnerProducts = action({
     };
   },
 });
+
+/**
+ * Check order statistics for an organization
+ * Usage: bunx convex run testing:checkOrderStats '{"orgId":"xxx"}'
+ */
+export const checkOrderStats = action({
+  args: {
+    orgId: v.id("organizations"),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    totalOrders: number;
+    byStatus: Record<string, number>;
+    totalRevenue: number;
+    totalProfit: number;
+    totalCost: number;
+  }> => {
+    const org: any = await ctx.runQuery(internal.organizations.get, { orgId: args.orgId });
+    if (!org) throw new Error("Organization not found");
+
+    const orders: any[] = await ctx.runQuery(internal.orders.listByOrg, { orgId: args.orgId });
+
+    const stats: {
+      totalOrders: number;
+      byStatus: Record<string, number>;
+      totalRevenue: number;
+      totalProfit: number;
+      totalCost: number;
+    } = {
+      totalOrders: orders.length,
+      byStatus: {} as Record<string, number>,
+      totalRevenue: 0,
+      totalProfit: 0,
+      totalCost: 0,
+    };
+
+    for (const order of orders) {
+      stats.byStatus[order.status] = (stats.byStatus[order.status] || 0) + 1;
+      if (order.status !== "cancelled") {
+        stats.totalRevenue += order.totalPrice || 0;
+        stats.totalProfit += order.totalProfit || 0;
+        stats.totalCost += order.totalCost || 0;
+      }
+    }
+
+    console.log("=== Order Statistics ===");
+    console.log(`Organization: ${org.name} (${org.slug})`);
+    console.log(`Total Orders: ${stats.totalOrders}`);
+    console.log(`By Status:`, stats.byStatus);
+    console.log(`Total Revenue: $${stats.totalRevenue.toFixed(2)}`);
+    console.log(`Total Cost: $${stats.totalCost.toFixed(2)}`);
+    console.log(`Total Profit: $${stats.totalProfit.toFixed(2)}`);
+
+    return stats;
+  },
+});
+
+/**
+ * Clear all orders for an organization (DANGEROUS - use with caution)
+ * Usage: bunx convex run testing:clearOrders '{"orgId":"xxx","confirm":true}'
+ */
+export const clearOrders = action({
+  args: {
+    orgId: v.id("organizations"),
+    confirm: v.boolean(),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    success: boolean;
+    deleted: number;
+    total: number;
+    message: string;
+  }> => {
+    if (!args.confirm) {
+      throw new Error("Must set confirm:true to proceed with deletion");
+    }
+
+    const org: any = await ctx.runQuery(internal.organizations.get, { orgId: args.orgId });
+    if (!org) throw new Error("Organization not found");
+
+    const orders: any[] = await ctx.runQuery(internal.orders.listByOrg, { orgId: args.orgId });
+
+    console.log(`=== Clearing ${orders.length} orders for ${org.name} ===`);
+
+    let deleted = 0;
+    for (const order of orders) {
+      try {
+        await ctx.runMutation(internal.orders.deleteOrder, { orderId: order._id });
+        deleted++;
+      } catch (e: any) {
+        console.error(`Failed to delete order ${order._id}: ${e.message}`);
+      }
+    }
+
+    console.log(`✅ Deleted ${deleted} out of ${orders.length} orders`);
+
+    return {
+      success: true,
+      deleted,
+      total: orders.length,
+      message: `Cleared ${deleted} orders`,
+    };
+  },
+});

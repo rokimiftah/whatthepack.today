@@ -5,7 +5,7 @@ import type { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { getUserRoles, requireRole } from "./auth";
 import { requireOrgAccess } from "./security";
 
@@ -577,5 +577,23 @@ export const cancel = mutation({
       updatedAt: Date.now(),
       notes: args.reason ? `${order.notes ?? ""}\nCancellation reason: ${args.reason}` : order.notes,
     });
+  },
+});
+
+// Internal functions for testing utilities
+export const listByOrg = internalQuery({
+  args: { orgId: v.id("organizations") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("orders")
+      .withIndex("by_orgId", (q) => q.eq("orgId", args.orgId))
+      .collect();
+  },
+});
+
+export const deleteOrder = internalMutation({
+  args: { orderId: v.id("orders") },
+  handler: async (ctx, args) => {
+    await ctx.db.delete(args.orderId);
   },
 });

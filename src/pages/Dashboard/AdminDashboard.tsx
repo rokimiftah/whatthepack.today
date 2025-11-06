@@ -69,9 +69,13 @@ export default function AdminDashboard() {
 
   const handleExtract = async () => {
     if (!chat.trim()) return;
+    if (!orgId) {
+      alert("Organization not found");
+      return;
+    }
     setExtracting(true);
     try {
-      const res: any = await extract({ chatText: chat });
+      const res: any = await extract({ chatText: chat, orgId });
       if (res?.success && res.data) {
         const d = res.data;
         setForm((prev) => ({

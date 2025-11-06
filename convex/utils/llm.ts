@@ -41,14 +41,25 @@ export async function chatCompletion(params: ChatParams): Promise<ChatResult> {
   if (typeof params.top_p === "number") body.top_p = params.top_p;
   if (typeof params.max_tokens === "number") body.max_tokens = params.max_tokens;
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
+  const timeoutMs = Number(process.env.LLM_TIMEOUT_MS || 4000);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Math.max(1000, timeoutMs));
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err: any) {
+    clearTimeout(timeout);
+    throw new Error(`LLM request error: ${err?.message || "unknown"}`);
+  }
+  clearTimeout(timeout);
 
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {

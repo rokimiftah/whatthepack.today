@@ -1,7 +1,36 @@
 import { useMemo, useState } from "react";
 
-import { Group, Paper, Stack, Text, Title } from "@mantine/core";
-import { IconDeviceFloppy, IconSearch, IconUpload } from "@tabler/icons-react";
+import {
+  ActionIcon,
+  Badge,
+  Card,
+  Group,
+  Paper,
+  SimpleGrid,
+  Stack,
+  Text,
+  TextInput,
+  ThemeIcon,
+  Title,
+  Tooltip,
+} from "@mantine/core";
+import {
+  IconAlertTriangle,
+  IconBoxSeam,
+  IconChartLine,
+  IconCurrencyDollar,
+  IconDeviceFloppy,
+  IconEdit,
+  IconLocation,
+  IconMinus,
+  IconPackage,
+  IconPlus,
+  IconRuler,
+  IconSearch,
+  IconTag,
+  IconTrash,
+  IconWeight,
+} from "@tabler/icons-react";
 import { useMutation, useQuery } from "convex/react";
 
 import FullscreenLoader from "@shared/components/FullscreenLoader";
@@ -33,6 +62,7 @@ export default function ProductsPage() {
   const updateProduct = useMutation(api.inventory.update);
   const adjustStock = useMutation(api.inventory.adjustStock);
   const createProduct = useMutation(api.inventory.create);
+  const removeProduct = useMutation(api.inventory.remove);
 
   const [creating, setCreating] = useState(false);
   const [edits, setEdits] = useState<Record<string, Partial<any>>>({});
@@ -152,202 +182,499 @@ export default function ProductsPage() {
     return <div className="p-6 text-sm text-neutral-400">Organization not found.</div>;
   }
 
+  // Calculate stats
+  const totalProducts = filtered.length;
+  const totalValue = filtered.reduce((sum: number, p: any) => sum + (p.sellPrice || 0) * (p.stockQuantity || 0), 0);
+  const lowStockCount = filtered.filter((p: any) => (p.stockQuantity || 0) < 5).length;
+
   return (
-    <Stack gap="lg">
-      <Group justify="space-between" align="center">
-        <Stack gap={2}>
-          <Text size="xs" tt="uppercase" fw={600} c="gray.6" lts={4}>
-            Products
-          </Text>
-          <Title order={2}>Catalog</Title>
-        </Stack>
-        <a href="/inventory" className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs">
-          <IconUpload className="mr-1 inline h-3 w-3" /> Import CSV
-        </a>
-      </Group>
+    <Stack gap="xl">
+      {/* Header Section */}
+      <Paper
+        p="xl"
+        radius="lg"
+        style={{
+          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+          border: "none",
+          boxShadow: "0 8px 32px rgba(102, 126, 234, 0.4)",
+        }}
+      >
+        <Group justify="space-between" align="flex-start">
+          <Stack gap="sm">
+            <Group gap="sm">
+              <ThemeIcon size={48} radius="md" variant="white" color="violet">
+                <IconPackage size={28} />
+              </ThemeIcon>
+              <div>
+                <Text size="xs" tt="uppercase" fw={600} c="white" style={{ opacity: 0.9, letterSpacing: "1.5px" }}>
+                  Product Catalog
+                </Text>
+                <Title order={1} c="white" mt={4}>
+                  Manage Products
+                </Title>
+              </div>
+            </Group>
+            <Group gap="xl" mt="sm">
+              <div>
+                <Text size="xs" c="white" style={{ opacity: 0.8 }}>
+                  Total Products
+                </Text>
+                <Text size="xl" fw={700} c="white">
+                  {totalProducts}
+                </Text>
+              </div>
+              <div>
+                <Text size="xs" c="white" style={{ opacity: 0.8 }}>
+                  Total Value
+                </Text>
+                <Text size="xl" fw={700} c="white">
+                  ${totalValue.toFixed(2)}
+                </Text>
+              </div>
+              {lowStockCount > 0 && (
+                <div>
+                  <Text size="xs" c="white" style={{ opacity: 0.8 }}>
+                    Low Stock Alerts
+                  </Text>
+                  <Group gap="xs">
+                    <Text size="xl" fw={700} c="white">
+                      {lowStockCount}
+                    </Text>
+                    <IconAlertTriangle size={20} color="white" />
+                  </Group>
+                </div>
+              )}
+            </Group>
+          </Stack>
+        </Group>
+      </Paper>
 
-      <div className="mb-2 flex items-center gap-2">
-        <div className="relative flex-1">
-          <IconSearch className="pointer-events-none absolute top-2.5 left-2 h-4 w-4 text-neutral-500" />
-          <input
-            className="w-full rounded-lg border border-gray-300 bg-white py-2 pr-3 pl-8 text-sm"
-            placeholder="Search by name or SKU"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-      </div>
+      {/* Search Bar */}
+      <TextInput
+        size="lg"
+        radius="md"
+        placeholder="Search products by name or SKU..."
+        leftSection={<IconSearch size={20} />}
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        styles={{
+          input: {
+            border: "2px solid var(--mantine-color-gray-2)",
+            "&:focus": {
+              borderColor: "var(--mantine-color-violet-5)",
+            },
+          },
+        }}
+      />
 
-      <section className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <Paper withBorder radius="xl" bg="white">
-            <div className="grid grid-cols-8 gap-2 border-b border-gray-200 bg-gray-50 p-2 text-xs tracking-widest text-neutral-500 uppercase">
-              <div className="col-span-2">Product</div>
-              <div>SKU</div>
-              <div className="text-right">COGS</div>
-              <div className="text-right">Price</div>
-              <div className="text-right">Stock</div>
-              <div>Location</div>
-              <div className="text-right">Actions</div>
-            </div>
-            <div className="divide-y divide-gray-100">
-              {filtered.map((p: any) => {
-                const e = edits[p._id] || {};
-                const v = {
-                  name: (e.name as string) ?? p.name ?? "",
-                  costOfGoods: (e.costOfGoods as any) ?? p.costOfGoods ?? 0,
-                  sellPrice: (e.sellPrice as any) ?? p.sellPrice ?? 0,
-                  warehouseLocation: (e.warehouseLocation as string) ?? p.warehouseLocation ?? "",
-                };
-                return (
-                  <div key={p._id} className="grid grid-cols-8 items-center gap-2 p-2 text-sm">
-                    <input
-                      className="col-span-2 rounded border border-gray-200 bg-white p-1"
-                      value={v.name}
-                      onChange={(ev) => setEdits((s) => ({ ...s, [p._id]: { ...s[p._id], name: ev.target.value } }))}
-                    />
-                    <div className="truncate text-neutral-600">{p.sku}</div>
-                    <input
-                      className="rounded border border-gray-200 bg-white p-1 text-right"
-                      value={v.costOfGoods}
-                      onChange={(ev) =>
-                        setEdits((s) => ({ ...s, [p._id]: { ...s[p._id], costOfGoods: Number(ev.target.value) || 0 } }))
-                      }
-                    />
-                    <input
-                      className="rounded border border-gray-200 bg-white p-1 text-right"
-                      value={v.sellPrice}
-                      onChange={(ev) =>
-                        setEdits((s) => ({ ...s, [p._id]: { ...s[p._id], sellPrice: Number(ev.target.value) || 0 } }))
-                      }
-                    />
-                    <div className="flex items-center justify-end gap-2">
-                      <button className="rounded border border-gray-300 px-2 text-xs" onClick={() => handleQuickStock(p._id, -1)}>
-                        -1
-                      </button>
-                      <span className="min-w-[2ch] text-right">{p.stockQuantity ?? 0}</span>
-                      <button className="rounded border border-gray-300 px-2 text-xs" onClick={() => handleQuickStock(p._id, +1)}>
-                        +1
-                      </button>
-                    </div>
-                    <input
-                      className="rounded border border-gray-200 bg-white p-1"
-                      value={v.warehouseLocation}
-                      onChange={(ev) => setEdits((s) => ({ ...s, [p._id]: { ...s[p._id], warehouseLocation: ev.target.value } }))}
-                    />
-                    <div className="text-right">
-                      <button
-                        className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
-                        onClick={() => handleInlineSave(p)}
-                      >
-                        <IconDeviceFloppy className="h-3 w-3" /> Save
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-              {filtered.length === 0 && <div className="p-4 text-sm text-neutral-500">No products found.</div>}
-            </div>
-          </Paper>
-        </div>
+      {/* Products Grid */}
+      <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="lg">
+        {/* Create Product Card */}
+        <Card
+          radius="lg"
+          p="xl"
+          style={{
+            border: "2px dashed var(--mantine-color-gray-3)",
+            backgroundColor: "var(--mantine-color-gray-0)",
+            minHeight: "400px",
+          }}
+        >
+          <form onSubmit={handleCreate} style={{ height: "100%" }}>
+            <Stack gap="md" style={{ height: "100%" }}>
+              <Group justify="center" mb="md">
+                <ThemeIcon size={56} radius="md" variant="light" color="violet">
+                  <IconPlus size={32} />
+                </ThemeIcon>
+              </Group>
 
-        <Paper withBorder radius="xl" bg="white" className="p-4">
-          <h3 className="mb-3 text-sm font-semibold tracking-widest text-neutral-600 uppercase">Create Product</h3>
-          <form className="space-y-2" onSubmit={handleCreate}>
-            <input
-              className="w-full rounded-lg border border-gray-300 bg-white p-2 text-sm"
-              placeholder="SKU"
-              value={draft.sku}
-              onChange={(e) => setDraft((s) => ({ ...s, sku: e.target.value }))}
-            />
-            <input
-              className="w-full rounded-lg border border-gray-300 bg-white p-2 text-sm"
-              placeholder="Name"
-              value={draft.name}
-              onChange={(e) => setDraft((s) => ({ ...s, name: e.target.value }))}
-            />
-            <input
-              className="w-full rounded-lg border border-gray-300 bg-white p-2 text-sm"
-              placeholder="Description"
-              value={draft.description}
-              onChange={(e) => setDraft((s) => ({ ...s, description: e.target.value }))}
-            />
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                className="rounded-lg border border-gray-300 bg-white p-2 text-sm"
-                placeholder="COGS"
-                type="number"
-                value={draft.costOfGoods}
-                onChange={(e) => setDraft((s) => ({ ...s, costOfGoods: Number(e.target.value) || 0 }))}
+              <Title order={4} ta="center" c="violet">
+                Create New Product
+              </Title>
+
+              <TextInput
+                label="SKU"
+                placeholder="Enter SKU"
+                required
+                value={draft.sku}
+                onChange={(e) => setDraft((s) => ({ ...s, sku: e.target.value }))}
+                leftSection={<IconTag size={16} />}
               />
-              <input
-                className="rounded-lg border border-gray-300 bg-white p-2 text-sm"
-                placeholder="Sell Price"
-                type="number"
-                value={draft.sellPrice}
-                onChange={(e) => setDraft((s) => ({ ...s, sellPrice: Number(e.target.value) || 0 }))}
+
+              <TextInput
+                label="Product Name"
+                placeholder="Enter product name"
+                required
+                value={draft.name}
+                onChange={(e) => setDraft((s) => ({ ...s, name: e.target.value }))}
+                leftSection={<IconBoxSeam size={16} />}
               />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                className="rounded-lg border border-gray-300 bg-white p-2 text-sm"
-                placeholder="Stock"
-                type="number"
-                value={draft.stockQuantity}
-                onChange={(e) => setDraft((s) => ({ ...s, stockQuantity: Number(e.target.value) || 0 }))}
-              />
-              <input
-                className="rounded-lg border border-gray-300 bg-white p-2 text-sm"
-                placeholder="Location"
-                value={draft.warehouseLocation}
-                onChange={(e) => setDraft((s) => ({ ...s, warehouseLocation: e.target.value }))}
-              />
-            </div>
-            <input
-              className="w-full rounded-lg border border-gray-300 bg-white p-2 text-sm"
-              placeholder="SOP Packing"
-              value={draft.sop_packing}
-              onChange={(e) => setDraft((s) => ({ ...s, sop_packing: e.target.value }))}
-            />
-            <div className="grid grid-cols-3 gap-2">
-              <input
-                className="rounded-lg border border-gray-300 bg-white p-2 text-sm"
-                placeholder="Weight (g)"
-                type="number"
-                value={draft.weight || 0}
-                onChange={(e) => setDraft((s) => ({ ...s, weight: Number(e.target.value) || undefined }))}
-              />
-              <input
-                className="rounded-lg border border-gray-300 bg-white p-2 text-sm"
-                placeholder="L"
-                type="number"
-                value={draft.length || 0}
-                onChange={(e) => setDraft((s) => ({ ...s, length: Number(e.target.value) || undefined }))}
-              />
-              <input
-                className="rounded-lg border border-gray-300 bg-white p-2 text-sm"
-                placeholder="W"
-                type="number"
-                value={draft.width || 0}
-                onChange={(e) => setDraft((s) => ({ ...s, width: Number(e.target.value) || undefined }))}
-              />
-              <input
-                className="rounded-lg border border-gray-300 bg-white p-2 text-sm"
-                placeholder="H"
-                type="number"
-                value={draft.height || 0}
-                onChange={(e) => setDraft((s) => ({ ...s, height: Number(e.target.value) || undefined }))}
-              />
-            </div>
-            <button
-              disabled={creating}
-              className="w-full rounded-lg border border-gray-400 px-4 py-2 text-sm disabled:opacity-50"
-            >
-              {creating ? "Creating..." : "Create"}
-            </button>
+
+              <Group grow>
+                <TextInput
+                  label="COGS"
+                  placeholder="0.00"
+                  type="number"
+                  value={draft.costOfGoods}
+                  onChange={(e) => setDraft((s) => ({ ...s, costOfGoods: Number(e.target.value) || 0 }))}
+                  leftSection={<IconCurrencyDollar size={16} />}
+                />
+                <TextInput
+                  label="Sell Price"
+                  placeholder="0.00"
+                  type="number"
+                  value={draft.sellPrice}
+                  onChange={(e) => setDraft((s) => ({ ...s, sellPrice: Number(e.target.value) || 0 }))}
+                  leftSection={<IconCurrencyDollar size={16} />}
+                />
+              </Group>
+
+              <Group grow>
+                <TextInput
+                  label="Stock"
+                  placeholder="0"
+                  type="number"
+                  value={draft.stockQuantity}
+                  onChange={(e) => setDraft((s) => ({ ...s, stockQuantity: Number(e.target.value) || 0 }))}
+                  leftSection={<IconPackage size={16} />}
+                />
+                <TextInput
+                  label="Location"
+                  placeholder="A1-B2"
+                  value={draft.warehouseLocation}
+                  onChange={(e) => setDraft((s) => ({ ...s, warehouseLocation: e.target.value }))}
+                  leftSection={<IconLocation size={16} />}
+                />
+              </Group>
+
+              <button
+                type="submit"
+                disabled={creating}
+                style={{
+                  marginTop: "auto",
+                  padding: "12px 24px",
+                  borderRadius: "8px",
+                  border: "none",
+                  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                  color: "white",
+                  fontWeight: 600,
+                  cursor: creating ? "not-allowed" : "pointer",
+                  opacity: creating ? 0.6 : 1,
+                }}
+              >
+                {creating ? "Creating..." : "Create Product"}
+              </button>
+            </Stack>
           </form>
+        </Card>
+
+        {/* Product Cards */}
+        {filtered.map((p: any) => {
+          const e = edits[p._id] || {};
+          const isEditing = Object.keys(e).length > 0;
+          const profit = (p.sellPrice || 0) - (p.costOfGoods || 0);
+          const profitMargin = p.sellPrice > 0 ? ((profit / p.sellPrice) * 100).toFixed(1) : "0";
+          const stockStatus =
+            (p.stockQuantity || 0) === 0
+              ? "out"
+              : (p.stockQuantity || 0) < 5
+                ? "low"
+                : (p.stockQuantity || 0) < 20
+                  ? "medium"
+                  : "good";
+          const stockColor =
+            stockStatus === "out" ? "red" : stockStatus === "low" ? "orange" : stockStatus === "medium" ? "yellow" : "green";
+
+          return (
+            <Card
+              key={p._id}
+              radius="lg"
+              p="xl"
+              style={{
+                border: isEditing ? "2px solid var(--mantine-color-violet-5)" : "1px solid var(--mantine-color-gray-2)",
+                backgroundColor: "white",
+                position: "relative",
+                overflow: "hidden",
+              }}
+            >
+              {/* Stock Status Indicator */}
+              <div
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  right: 0,
+                  width: "4px",
+                  height: "100%",
+                  backgroundColor: `var(--mantine-color-${stockColor}-5)`,
+                }}
+              />
+
+              <Stack gap="md">
+                {/* Product Header */}
+                <Group justify="space-between" align="flex-start">
+                  <div style={{ flex: 1 }}>
+                    {isEditing ? (
+                      <TextInput
+                        value={(e.name as string) ?? p.name ?? ""}
+                        onChange={(ev) => setEdits((s) => ({ ...s, [p._id]: { ...s[p._id], name: ev.target.value } }))}
+                        size="sm"
+                        fw={600}
+                      />
+                    ) : (
+                      <Title order={4} lineClamp={1}>
+                        {p.name}
+                      </Title>
+                    )}
+                    <Badge variant="light" color="gray" size="sm" mt={4}>
+                      {p.sku}
+                    </Badge>
+                  </div>
+                  <Group gap={4}>
+                    <Tooltip label="Edit Product">
+                      <ActionIcon
+                        variant="light"
+                        color={isEditing ? "violet" : "gray"}
+                        size="lg"
+                        radius="md"
+                        onClick={() => {
+                          if (isEditing) {
+                            setEdits((s) => ({ ...s, [p._id]: {} }));
+                          } else {
+                            setEdits((s) => ({ ...s, [p._id]: { name: p.name } }));
+                          }
+                        }}
+                      >
+                        <IconEdit size={18} />
+                      </ActionIcon>
+                    </Tooltip>
+                    <Tooltip label="Delete Product">
+                      <ActionIcon
+                        variant="light"
+                        color="red"
+                        size="lg"
+                        radius="md"
+                        onClick={async () => {
+                          if (!confirm(`Delete product ${p.sku}? This cannot be undone.`)) return;
+                          try {
+                            await removeProduct({ productId: p._id });
+                          } catch (e: any) {
+                            alert(e?.message || "Failed to delete product");
+                          }
+                        }}
+                      >
+                        <IconTrash size={18} />
+                      </ActionIcon>
+                    </Tooltip>
+                  </Group>
+                </Group>
+
+                {/* Pricing Section */}
+                <Paper p="md" radius="md" bg="gray.0">
+                  <SimpleGrid cols={2} spacing="md">
+                    <div>
+                      <Text size="xs" c="dimmed" mb={4}>
+                        Cost of Goods
+                      </Text>
+                      {isEditing ? (
+                        <TextInput
+                          value={(e.costOfGoods as any) ?? p.costOfGoods ?? 0}
+                          onChange={(ev) =>
+                            setEdits((s) => ({ ...s, [p._id]: { ...s[p._id], costOfGoods: Number(ev.target.value) || 0 } }))
+                          }
+                          size="sm"
+                          leftSection={<IconCurrencyDollar size={14} />}
+                        />
+                      ) : (
+                        <Group gap={4}>
+                          <IconCurrencyDollar size={16} style={{ opacity: 0.6 }} />
+                          <Text fw={600}>${(p.costOfGoods || 0).toFixed(2)}</Text>
+                        </Group>
+                      )}
+                    </div>
+                    <div>
+                      <Text size="xs" c="dimmed" mb={4}>
+                        Sell Price
+                      </Text>
+                      {isEditing ? (
+                        <TextInput
+                          value={(e.sellPrice as any) ?? p.sellPrice ?? 0}
+                          onChange={(ev) =>
+                            setEdits((s) => ({ ...s, [p._id]: { ...s[p._id], sellPrice: Number(ev.target.value) || 0 } }))
+                          }
+                          size="sm"
+                          leftSection={<IconCurrencyDollar size={14} />}
+                        />
+                      ) : (
+                        <Group gap={4}>
+                          <IconCurrencyDollar size={16} style={{ opacity: 0.6 }} />
+                          <Text fw={600}>${(p.sellPrice || 0).toFixed(2)}</Text>
+                        </Group>
+                      )}
+                    </div>
+                  </SimpleGrid>
+                </Paper>
+
+                {/* Profit Margin */}
+                <Group justify="space-between" align="center">
+                  <Group gap="xs">
+                    <ThemeIcon size={32} radius="md" variant="light" color={profit > 0 ? "teal" : "red"}>
+                      <IconChartLine size={16} />
+                    </ThemeIcon>
+                    <div>
+                      <Text size="xs" c="dimmed">
+                        Profit Margin
+                      </Text>
+                      <Text fw={600} c={profit > 0 ? "teal" : "red"}>
+                        {profitMargin}%
+                      </Text>
+                    </div>
+                  </Group>
+                  <Badge variant="light" color={profit > 0 ? "teal" : "red"} size="lg">
+                    ${profit.toFixed(2)}
+                  </Badge>
+                </Group>
+
+                {/* Stock Management */}
+                <Paper
+                  p="md"
+                  radius="md"
+                  bg={`${stockColor}.0`}
+                  style={{ border: `1px solid var(--mantine-color-${stockColor}-2)` }}
+                >
+                  <Group justify="space-between" align="center" mb="sm">
+                    <Group gap="xs">
+                      <IconPackage size={16} />
+                      <Text size="sm" fw={600}>
+                        Stock Level
+                      </Text>
+                    </Group>
+                    <Badge variant="filled" color={stockColor} size="lg">
+                      {p.stockQuantity || 0} units
+                    </Badge>
+                  </Group>
+                  <Group justify="center" gap="md">
+                    <ActionIcon
+                      variant="filled"
+                      color={stockColor}
+                      size="lg"
+                      radius="md"
+                      onClick={() => handleQuickStock(p._id, -1)}
+                      disabled={(p.stockQuantity || 0) === 0}
+                    >
+                      <IconMinus size={18} />
+                    </ActionIcon>
+                    <ActionIcon
+                      variant="filled"
+                      color={stockColor}
+                      size="lg"
+                      radius="md"
+                      onClick={() => handleQuickStock(p._id, 1)}
+                    >
+                      <IconPlus size={18} />
+                    </ActionIcon>
+                  </Group>
+                </Paper>
+
+                {/* Location */}
+                {isEditing ? (
+                  <TextInput
+                    label="Warehouse Location"
+                    value={(e.warehouseLocation as string) ?? p.warehouseLocation ?? ""}
+                    onChange={(ev) => setEdits((s) => ({ ...s, [p._id]: { ...s[p._id], warehouseLocation: ev.target.value } }))}
+                    leftSection={<IconLocation size={16} />}
+                  />
+                ) : (
+                  <Group gap="xs">
+                    <IconLocation size={16} style={{ opacity: 0.6 }} />
+                    <Text size="sm" c="dimmed">
+                      {p.warehouseLocation || "No location set"}
+                    </Text>
+                  </Group>
+                )}
+
+                {/* Dimensions (if available) */}
+                {(p.weight || p.length || p.width || p.height) && (
+                  <Group gap="md">
+                    {p.weight && (
+                      <Tooltip label="Weight">
+                        <Group gap={4}>
+                          <IconWeight size={14} style={{ opacity: 0.6 }} />
+                          <Text size="xs" c="dimmed">
+                            {p.weight}g
+                          </Text>
+                        </Group>
+                      </Tooltip>
+                    )}
+                    {(p.length || p.width || p.height) && (
+                      <Tooltip label="Dimensions (L×W×H)">
+                        <Group gap={4}>
+                          <IconRuler size={14} style={{ opacity: 0.6 }} />
+                          <Text size="xs" c="dimmed">
+                            {p.length}×{p.width}×{p.height}
+                          </Text>
+                        </Group>
+                      </Tooltip>
+                    )}
+                  </Group>
+                )}
+
+                {/* Save Button (only show when editing) */}
+                {isEditing && (
+                  <button
+                    onClick={() => handleInlineSave(p)}
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      borderRadius: "8px",
+                      border: "none",
+                      background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                      color: "white",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "8px",
+                    }}
+                  >
+                    <IconDeviceFloppy size={18} />
+                    Save Changes
+                  </button>
+                )}
+              </Stack>
+            </Card>
+          );
+        })}
+      </SimpleGrid>
+
+      {/* Empty State */}
+      {filtered.length === 0 && !searchTerm && (
+        <Paper p="xl" radius="lg" bg="gray.0" style={{ textAlign: "center" }}>
+          <ThemeIcon size={64} radius="md" variant="light" color="gray" mx="auto" mb="md">
+            <IconPackage size={32} />
+          </ThemeIcon>
+          <Title order={3} c="dimmed" mb="xs">
+            No products yet
+          </Title>
+          <Text size="sm" c="dimmed">
+            Create your first product to get started
+          </Text>
         </Paper>
-      </section>
+      )}
+
+      {/* No Search Results */}
+      {filtered.length === 0 && searchTerm && (
+        <Paper p="xl" radius="lg" bg="gray.0" style={{ textAlign: "center" }}>
+          <ThemeIcon size={64} radius="md" variant="light" color="gray" mx="auto" mb="md">
+            <IconSearch size={32} />
+          </ThemeIcon>
+          <Title order={3} c="dimmed" mb="xs">
+            No products found
+          </Title>
+          <Text size="sm" c="dimmed">
+            Try adjusting your search terms
+          </Text>
+        </Paper>
+      )}
     </Stack>
   );
 }

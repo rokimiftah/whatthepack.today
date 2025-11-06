@@ -2,35 +2,32 @@
 
 import { v } from "convex/values";
 
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import { action } from "../_generated/server";
-import { getUserOrgId, getUserRoles } from "../auth";
+import { getUserOrgId } from "../auth";
+import { requireOrgAccess } from "../security";
 import { chatCompletion } from "../utils/llm";
 
 // Extract order details from pasted chat text
 export const extractOrderFromChat = action({
   args: {
     chatText: v.string(),
+    orgId: v.optional(v.id("organizations")),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not authenticated");
 
-    const userRoles = await getUserRoles(ctx);
-    const userOrgId = await getUserOrgId(ctx);
-
-    // Only admins and owners can extract order data
-    const primaryRole = userRoles[0] || "unknown";
-    if (!["admin", "owner"].includes(primaryRole)) {
-      throw new Error("Access denied: Only admins and owners can extract order data");
-    }
+    const resolvedOrgId = args.orgId ?? (await getUserOrgId(ctx));
+    // Read-only action: enforce org membership, role restrictions are handled at UI layer
+    await requireOrgAccess(ctx as any, resolvedOrgId as any);
 
     try {
-      // Get products from this organization for product matching
-      const products = await ctx.runQuery(api.inventory.list, { orgId: userOrgId });
+      // Get products from this organization for product matching (server-side, no pricing leaked to client)
+      const products = await ctx.runQuery(internal.inventory.listBasicForOrg, { orgId: resolvedOrgId });
 
       // Create product context for better matching
-      const productContext = products.map((p: any) => ({
+      const productContext = (products as any[]).map((p: any) => ({
         sku: p.sku,
         name: p.name,
         aliases: [p.name.toLowerCase(), p.sku.toLowerCase()], // Add any aliases here

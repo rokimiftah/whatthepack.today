@@ -2,7 +2,7 @@ import type { Id } from "../../../../convex/_generated/dataModel";
 
 import { useCallback, useEffect, useState } from "react";
 
-import { ActionIcon, Badge, Card, Group, Loader, Stack, Text, Title } from "@mantine/core";
+import { ActionIcon, Badge, Card, Group, Skeleton, Stack, Text, Title } from "@mantine/core";
 import { IconRefresh, IconSparkles } from "@tabler/icons-react";
 import { useAction } from "convex/react";
 
@@ -41,12 +41,12 @@ export default function DailyBriefingCard({ orgId }: DailyBriefingCardProps) {
   if (loading || briefingResult === null) {
     return (
       <Card withBorder shadow="sm" radius="lg" bg="white">
-        <Stack align="center" py="lg">
-          <IconSparkles size={24} color="#5f84f0" />
-          <Loader size="sm" />
-          <Text size="sm" c="gray.6">
-            {loading ? "Generating your daily briefing..." : "Loading..."}
-          </Text>
+        <Stack gap="sm" p="md">
+          <Skeleton height={14} width="30%" />
+          <Skeleton height={10} width="95%" />
+          <Skeleton height={10} width="92%" />
+          <Skeleton height={10} width="88%" />
+          <Skeleton height={10} width="84%" />
         </Stack>
       </Card>
     );

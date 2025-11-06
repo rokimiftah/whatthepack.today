@@ -1,33 +1,36 @@
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  ActionIcon,
   Badge,
-  Box,
-  Breadcrumbs,
   Card,
-  Grid,
   Group,
+  Menu,
   Paper,
   Progress,
   SimpleGrid,
+  Skeleton,
   Stack,
   Table,
+  Tabs,
   Text,
   ThemeIcon,
   Title,
-  UnstyledButton,
 } from "@mantine/core";
 import {
   IconAlertCircle,
   IconArrowUpRight,
+  IconBell,
   IconChartBar,
-  IconChevronRight,
+  IconChevronDown,
   IconCurrencyDollar,
+  IconLogout,
   IconPackage,
   IconPlug,
   IconShoppingCart,
   IconTrendingUp,
   IconUpload,
+  IconUser,
   IconUsers,
 } from "@tabler/icons-react";
 import { useQuery } from "convex/react";
@@ -36,12 +39,10 @@ import AnalyticsPage from "@pages/Analytics";
 import IntegrationsPage from "@pages/Integrations";
 import InventoryPage from "@pages/Inventory";
 import OrdersPage from "@pages/Orders";
-// Embedded pages
 import ProductsPage from "@pages/Products";
 import StaffManagementPage from "@pages/Staff";
-// import { Link } from "wouter";
 
-import FullscreenLoader from "@shared/components/FullscreenLoader";
+// no fullscreen overlay loader here; route-level handles global loading
 
 import { api } from "../../../convex/_generated/api";
 import DailyBriefingCard from "./components/DailyBriefingCard";
@@ -50,14 +51,14 @@ import SalesTrendChart from "./components/SalesTrendChart";
 
 type OwnerView = "overview" | "products" | "orders" | "staff" | "integrations" | "analytics" | "inventory";
 
-const quickActions: Array<{ label: string; description: string; view: OwnerView; icon: any }> = [
-  { label: "Overview", description: "Summary & insights", view: "overview", icon: IconChartBar },
-  { label: "Products", description: "Manage catalog & stock", view: "products", icon: IconPackage },
-  { label: "Orders", description: "View and update orders", view: "orders", icon: IconShoppingCart },
-  { label: "Staff", description: "Invite teammates & manage roles", view: "staff", icon: IconUsers },
-  { label: "Integrations", description: "Connect ShipEngine securely", view: "integrations", icon: IconPlug },
-  { label: "Analytics", description: "Ask AI for business insights", view: "analytics", icon: IconChartBar },
-  { label: "Inventory Import", description: "Bulk add products via CSV", view: "inventory", icon: IconUpload },
+const quickActions: Array<{ label: string; value: OwnerView; icon: any }> = [
+  { label: "Overview", value: "overview", icon: IconChartBar },
+  { label: "Products", value: "products", icon: IconPackage },
+  { label: "Orders", value: "orders", icon: IconShoppingCart },
+  { label: "Staff", value: "staff", icon: IconUsers },
+  { label: "Integrations", value: "integrations", icon: IconPlug },
+  { label: "Analytics", value: "analytics", icon: IconTrendingUp },
+  { label: "Inventory", value: "inventory", icon: IconUpload },
 ];
 
 export default function OwnerDashboard() {
@@ -67,6 +68,11 @@ export default function OwnerDashboard() {
   const [_refreshKey, setRefreshKey] = useState(0);
   const [lastUpdated, setLastUpdated] = useState<string>(new Date().toLocaleTimeString());
   const [view, setView] = useState<OwnerView>("overview");
+  const [showNotificationBadge, setShowNotificationBadge] = useState(() => {
+    // Initialize from localStorage
+    const stored = localStorage.getItem("notificationBadgeRead");
+    return stored !== "true";
+  });
 
   const kpis = useQuery(api.analytics.getDashboardKPIs, orgId ? { orgId } : "skip");
   const lowStock = useQuery(api.inventory.getLowStock, orgId ? { orgId, threshold: 5 } : "skip");
@@ -81,57 +87,61 @@ export default function OwnerDashboard() {
     return () => clearInterval(interval);
   }, []);
 
+  // Handle notification badge click
+  const handleNotificationClick = () => {
+    setShowNotificationBadge(false);
+    localStorage.setItem("notificationBadgeRead", "true");
+  };
+
   const summary = kpis?.summary;
   const cards = useMemo(
     () => [
       {
-        label: "Orders",
+        label: "Total Orders",
         value: summary?.totalOrders ?? 0,
         subtitle: `${summary?.shippedOrders ?? 0} shipped`,
-        trend: summary?.completionRate ? `${summary.completionRate.toFixed(1)}% completion` : undefined,
+        change: summary?.completionRate ? `${summary.completionRate.toFixed(0)}%` : "0%",
+        changeLabel: "completion rate",
         icon: IconShoppingCart,
-        gradient: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+        color: "indigo",
+      },
+      {
+        label: "Total Revenue",
+        value: `$${(summary?.totalRevenue ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        subtitle: `Avg: $${(summary?.averageOrderValue ?? 0).toFixed(2)}`,
+        change: "Last 30 days",
+        changeLabel: "data period",
+        icon: IconCurrencyDollar,
         color: "violet",
       },
       {
-        label: "Revenue",
-        value: `$${(summary?.totalRevenue ?? 0).toFixed(2)}`,
-        subtitle: `Avg: $${(summary?.averageOrderValue ?? 0).toFixed(2)}`,
-        trend: "+12% vs last period",
-        icon: IconCurrencyDollar,
-        gradient: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
-        color: "pink",
-      },
-      {
-        label: "Profit",
-        value: `$${(summary?.totalProfit ?? 0).toFixed(2)}`,
+        label: "Net Profit",
+        value: `$${(summary?.totalProfit ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         subtitle: `Margin: ${(summary?.profitMargin ?? 0).toFixed(1)}%`,
-        trend: summary?.profitMargin && summary.profitMargin > 20 ? "Healthy margin" : "Needs attention",
+        change: summary?.profitMargin && summary.profitMargin > 20 ? "Healthy" : "Low",
+        changeLabel: "profit margin",
         icon: IconTrendingUp,
-        gradient: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
-        color: "cyan",
+        color: summary?.profitMargin && summary.profitMargin > 20 ? "teal" : "yellow",
       },
       {
-        label: "Growth",
+        label: "Fulfillment Rate",
         value: summary?.completionRate ? `${summary.completionRate.toFixed(1)}%` : "0%",
         subtitle: "Order fulfillment",
-        progress: summary?.completionRate ? summary.completionRate / 100 : 0,
-        trend: summary?.completionRate && summary.completionRate > 90 ? "Excellent" : "Improving",
+        progress: summary?.completionRate ? summary.completionRate : 0,
+        change: summary?.completionRate && summary.completionRate > 90 ? "Excellent" : "Good",
+        changeLabel: "performance",
         icon: IconArrowUpRight,
-        gradient: "linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)",
-        color: "teal",
+        color: summary?.completionRate && summary.completionRate > 90 ? "green" : "pink",
       },
     ],
     [summary],
   );
 
-  if (orgResult === undefined || (view === "overview" && (kpis === undefined || lowStock === undefined))) {
-    return <FullscreenLoader />;
-  }
+  const loadingOverview = view === "overview" && (kpis === undefined || lowStock === undefined);
 
-  if (!orgId) {
+  if (orgResult !== undefined && !orgId) {
     return (
-      <Paper withBorder p="md" radius="lg" bg="white">
+      <Paper p="md" radius="lg" bg="gray.0">
         <Text size="sm" c="gray.6">
           Organization not found.
         </Text>
@@ -139,611 +149,668 @@ export default function OwnerDashboard() {
     );
   }
 
-  const getPageConfig = (view: OwnerView) => {
-    switch (view) {
-      case "products":
-        return {
-          title: "Products",
-          subtitle: "Manage catalog & stock",
-          gradient: "linear-gradient(180deg, #667eea 0%, #764ba2 100%)",
-          component: <ProductsPage />,
-        };
-      case "orders":
-        return {
-          title: "Orders",
-          subtitle: "View and update orders",
-          gradient: "linear-gradient(180deg, #f093fb 0%, #f5576c 100%)",
-          component: <OrdersPage />,
-        };
-      case "staff":
-        return {
-          title: "Staff Management",
-          subtitle: "Invite teammates & manage roles",
-          gradient: "linear-gradient(180deg, #4facfe 0%, #00f2fe 100%)",
-          component: <StaffManagementPage />,
-        };
-      case "integrations":
-        return {
-          title: "Integrations",
-          subtitle: "Connect ShipEngine securely",
-          gradient: "linear-gradient(180deg, #43e97b 0%, #38f9d7 100%)",
-          component: <IntegrationsPage />,
-        };
-      case "analytics":
-        return {
-          title: "Analytics",
-          subtitle: "Ask AI for business insights",
-          gradient: "linear-gradient(180deg, #fa709a 0%, #fee140 100%)",
-          component: <AnalyticsPage />,
-        };
-      case "inventory":
-        return {
-          title: "Inventory Import",
-          subtitle: "Bulk add products via CSV",
-          gradient: "linear-gradient(180deg, #30cfd0 0%, #330867 100%)",
-          component: <InventoryPage />,
-        };
-      default:
-        return null;
-    }
-  };
-
   return (
-    <Stack gap="xl" style={{ width: "100%" }}>
-      {/* Header */}
-      <Box
+    <Stack gap="lg" style={{ width: "100%", maxWidth: "1400px", margin: "0 auto" }}>
+      {/* Professional Header */}
+      <Paper
+        py="sm"
+        px="xl"
+        radius="lg"
+        bg="white"
         style={{
-          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-          borderRadius: "var(--mantine-radius-xl)",
-          padding: "var(--mantine-spacing-xl)",
-          boxShadow: "var(--mantine-shadow-md)",
+          border: "1px solid var(--mantine-color-gray-2)",
+          boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
         }}
       >
-        <Stack gap={16}>
-          <Group justify="space-between" align="flex-start">
-            <Breadcrumbs
-              separator="/"
-              styles={{
-                separator: {
-                  color: "white !important",
-                },
-                breadcrumb: {
-                  color: "white !important",
-                },
-              }}
-            >
+        <Group justify="space-between" align="center" wrap="nowrap">
+          {/* Left Section - Logo & Title */}
+          <Group gap="lg" wrap="nowrap">
+            <div>
               <Text
-                size="sm"
-                fw={500}
-                c="white"
                 style={{
-                  color: "white !important",
+                  fontSize: "1.5rem",
+                  fontWeight: 800,
+                  color: "#1e293b",
+                  letterSpacing: "0.5px",
+                  textTransform: "uppercase",
                 }}
               >
-                Dashboard
+                {orgResult?.organization?.name || "Your Store"}
               </Text>
-              <Text
-                size="sm"
-                fw={600}
-                c="white"
-                style={{
-                  color: "white !important",
-                }}
-              >
-                {view === "overview" ? "Overview" : view.charAt(0).toUpperCase() + view.slice(1).replace("_", " ")}
-              </Text>
-            </Breadcrumbs>
-            <Group gap="md">
-              <Box
-                style={{
-                  backgroundColor: "rgba(255, 255, 255, 0.25)",
-                  backdropFilter: "blur(10px)",
-                  border: "1px solid rgba(255, 255, 255, 0.4)",
-                  borderRadius: "var(--mantine-radius-lg)",
-                  padding: "var(--mantine-spacing-sm)",
-                }}
-              >
-                <Group gap="xs">
-                  <Box
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      backgroundColor: "#4ade80",
-                      boxShadow: "0 0 8px rgba(74, 222, 128, 0.8)",
-                    }}
-                  />
-                  <Text
-                    size="sm"
-                    fw={600}
-                    c="white"
-                    style={{
-                      color: "white !important",
-                    }}
-                  >
-                    Live
-                  </Text>
-                </Group>
-              </Box>
-              <Text
-                size="sm"
-                c="white"
-                style={{
-                  color: "white !important",
-                }}
-              >
-                Updated {lastUpdated}
-              </Text>
-            </Group>
+            </div>
           </Group>
-          <Stack gap={6}>
-            <Text
-              size="lg"
-              fw={700}
-              c="white"
-              tt="uppercase"
-              style={{
-                color: "white !important",
-                opacity: 0.95,
-                letterSpacing: 2,
-                fontSize: "1.1rem",
-              }}
-            >
-              {orgResult?.organization?.name || "Your Store"}
-            </Text>
-            <Title
-              order={1}
-              c="white"
-              style={{
-                fontSize: "2.5rem",
-                fontWeight: 800,
-                color: "white !important",
-              }}
-            >
-              Owner Dashboard
-            </Title>
-            <Text
-              size="md"
-              c="white"
-              style={{
-                color: "white !important",
-              }}
-            >
-              Real-time view of performance, inventory and insights
-            </Text>
-          </Stack>
-        </Stack>
-      </Box>
 
-      <Grid gutter="xl">
-        {/* Sidebar */}
-        <Grid.Col span={{ base: 12, md: 3, lg: 3 }} style={{ minWidth: 0 }}>
-          <Stack gap="lg">
-            <Paper withBorder radius="xl" bg="white" p="lg" shadow="md" style={{ position: "sticky", top: 16 }}>
-              <Stack gap="lg">
-                <Group gap="xs">
-                  <Box
-                    style={{
-                      width: 4,
-                      height: 18,
-                      background: "linear-gradient(180deg, #667eea 0%, #764ba2 100%)",
-                      borderRadius: 4,
-                    }}
-                  />
-                  <Text size="xs" tt="uppercase" fw={700} c="gray.7" lts={2}>
-                    Quick navigation
-                  </Text>
-                </Group>
-                <Stack gap={8}>
-                  {quickActions.map((action) => {
-                    const Icon = action.icon;
-                    const active = view === action.view;
-                    return (
-                      <UnstyledButton
-                        key={action.label}
-                        style={{ width: "100%" }}
-                        onClick={() => setView(action.view)}
-                        onMouseEnter={(e) => {
-                          const paper = e.currentTarget.querySelector("[data-menu-item]") as HTMLElement;
-                          if (paper) {
-                            paper.style.backgroundColor = "#f8f9fa";
-                            paper.style.borderColor = "#dee2e6";
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          const paper = e.currentTarget.querySelector("[data-menu-item]") as HTMLElement;
-                          if (paper) {
-                            paper.style.backgroundColor = active ? "var(--mantine-color-gray-0)" : "white";
-                            paper.style.borderColor = active ? "var(--mantine-color-brand-3)" : "var(--mantine-color-gray-2)";
-                          }
-                        }}
-                      >
-                        <Paper
-                          data-menu-item
-                          p="md"
-                          radius="lg"
-                          style={{
-                            border: `1px solid ${active ? "var(--mantine-color-brand-3)" : "var(--mantine-color-gray-2)"}`,
-                            backgroundColor: active ? "var(--mantine-color-gray-0)" : "white",
-                            height: "72px",
-                            cursor: "pointer",
-                            transition: "all 0.2s ease",
-                          }}
-                        >
-                          <Group justify="space-between" wrap="nowrap" align="center" style={{ height: "100%" }}>
-                            <Group gap="md" wrap="nowrap" align="center" style={{ flex: 1, minWidth: 0 }}>
-                              <ThemeIcon
-                                size={36}
-                                radius="md"
-                                color="brand"
-                                variant="light"
-                                style={{
-                                  flexShrink: 0,
-                                  background:
-                                    "linear-gradient(135deg, var(--mantine-color-brand-0) 0%, var(--mantine-color-brand-1) 100%)",
-                                }}
-                              >
-                                <Icon size={18} />
-                              </ThemeIcon>
-                              <Box style={{ flex: 1, minWidth: 0 }}>
-                                <Text fw={600} size="sm" c="gray.9" style={{ lineHeight: 1.3 }}>
-                                  {action.label}
-                                </Text>
-                                <Text size="xs" c="gray.6" style={{ lineHeight: 1.3, marginTop: 2 }}>
-                                  {action.description}
-                                </Text>
-                              </Box>
-                            </Group>
-                            <Box style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>
-                              <IconChevronRight size={16} style={{ opacity: 0.5 }} />
-                            </Box>
-                          </Group>
-                        </Paper>
-                      </UnstyledButton>
-                    );
-                  })}
-                </Stack>
-              </Stack>
+          {/* Right Section - Actions */}
+          <Group gap="md" wrap="nowrap">
+            {/* Time Display */}
+            <Paper
+              px="md"
+              py={6}
+              radius="lg"
+              style={{
+                backgroundColor: "var(--mantine-color-gray-0)",
+                border: "1px solid var(--mantine-color-gray-2)",
+              }}
+            >
+              <Group gap={6}>
+                <div
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    backgroundColor: "var(--mantine-color-green-6)",
+                  }}
+                />
+                <Text size="xs" fw={500} c="dark">
+                  {lastUpdated}
+                </Text>
+              </Group>
             </Paper>
-          </Stack>
-        </Grid.Col>
 
-        {/* Main content */}
-        <Grid.Col span={{ base: 12, md: 9, lg: 9 }} style={{ minWidth: 0 }}>
-          <Stack gap="xl">
-            {view !== "overview" ? (
-              // Render embedded pages for non-overview views with consistent styling
-              (() => {
-                const pageConfig = getPageConfig(view);
-                if (!pageConfig) return null;
-                return (
-                  <>
-                    {/* Page Header */}
-                    <Stack gap={8}>
-                      <Group gap="xs">
-                        <Box
-                          style={{
-                            width: 4,
-                            height: 20,
-                            background: pageConfig.gradient,
-                            borderRadius: 4,
-                          }}
-                        />
-                        <Title order={3}>{pageConfig.title}</Title>
-                      </Group>
-                      <Text size="sm" c="gray.6" ml={16}>
-                        {pageConfig.subtitle}
-                      </Text>
-                    </Stack>
-                    {/* Page Content */}
-                    {pageConfig.component}
-                  </>
-                );
-              })()
-            ) : (
-              <>
-                {/* KPI Cards */}
-                <Stack gap={8}>
-                  <Group gap="xs">
-                    <Box
+            {/* Notifications with Badge */}
+            <Menu shadow="md" width={240} position="bottom" offset={18}>
+              <Menu.Target>
+                <div style={{ position: "relative" }}>
+                  <ActionIcon variant="light" color="gray" size="lg" radius="lg" onClick={handleNotificationClick}>
+                    <IconBell size={20} />
+                  </ActionIcon>
+                  {/* Notification Badge */}
+                  {showNotificationBadge && (
+                    <div
                       style={{
-                        width: 4,
+                        position: "absolute",
+                        top: -8,
+                        right: -8,
+                        minWidth: 20,
                         height: 20,
-                        background: "linear-gradient(180deg, #667eea 0%, #764ba2 100%)",
-                        borderRadius: 4,
+                        borderRadius: "50%",
+                        backgroundColor: "var(--mantine-color-red-6)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        pointerEvents: "none",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        color: "white",
+                        border: "2px solid white",
+                        boxShadow: "0 2px 4px rgba(0, 0, 0, 0.2)",
+                        boxSizing: "content-box",
+                        lineHeight: 1,
                       }}
-                    />
-                    <Title order={3}>Performance Overview</Title>
-                  </Group>
-                  <Text size="sm" c="gray.6" ml={16}>
-                    Real-time KPIs for your organization
+                    >
+                      3
+                    </div>
+                  )}
+                </div>
+              </Menu.Target>
+
+              <Menu.Dropdown style={{ marginTop: 0 }}>
+                <Menu.Label>Notifications</Menu.Label>
+                <Menu.Item>
+                  <Stack gap={4}>
+                    <Text size="sm" fw={500}>
+                      New order received
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      2 minutes ago
+                    </Text>
+                  </Stack>
+                </Menu.Item>
+                <Menu.Item>
+                  <Stack gap={4}>
+                    <Text size="sm" fw={500}>
+                      Low stock alert
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      15 minutes ago
+                    </Text>
+                  </Stack>
+                </Menu.Item>
+                <Menu.Item>
+                  <Stack gap={4}>
+                    <Text size="sm" fw={500}>
+                      Order shipped
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      1 hour ago
+                    </Text>
+                  </Stack>
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+
+            {/* Profile Menu with Avatar */}
+            <Menu shadow="md" width={210} position="bottom" offset={13}>
+              <Menu.Target>
+                <Group
+                  gap="sm"
+                  style={{
+                    cursor: "pointer",
+                    padding: "6px 12px",
+                    borderRadius: "var(--mantine-radius-lg)",
+                    transition: "background-color 0.2s",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = "var(--mantine-color-gray-0)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = "transparent";
+                  }}
+                >
+                  <ThemeIcon size={32} radius="lg" variant="light" color="blue">
+                    <IconUser size={16} />
+                  </ThemeIcon>
+                  <Text size="sm" fw={600}>
+                    Owner
                   </Text>
-                </Stack>
-                <SimpleGrid cols={{ base: 1, xs: 2, md: 4 }}>
+                  <IconChevronDown size={14} style={{ opacity: 0.6 }} />
+                </Group>
+              </Menu.Target>
+
+              <Menu.Dropdown style={{ marginTop: 0 }}>
+                {/* <Menu.Item leftSection={<IconSettings size={16} />}>Settings</Menu.Item>
+
+                <Menu.Divider /> */}
+
+                <Menu.Item color="red" leftSection={<IconLogout size={16} />}>
+                  Logout
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          </Group>
+        </Group>
+      </Paper>
+
+      {/* Tabs Navigation */}
+      <Tabs
+        value={view}
+        onChange={(value) => setView(value as OwnerView)}
+        keepMounted={false}
+        variant="pills"
+        styles={{
+          root: {
+            display: "flex",
+            flexDirection: "column",
+            gap: "1rem",
+          },
+          list: {
+            flexWrap: "wrap",
+            gap: "0.5rem",
+            justifyContent: "center",
+          },
+          tab: {
+            fontWeight: "500 !important",
+            fontSize: "0.875rem !important",
+            padding: "0.75rem 1.5rem !important",
+            borderRadius: "var(--mantine-radius-lg) !important",
+            transition: "all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) !important",
+            border: "2px solid #e9ecef !important",
+            backgroundColor: "#ffffff !important",
+            color: "#495057 !important",
+            position: "relative" as const,
+            overflow: "hidden !important",
+            cursor: "pointer !important",
+
+            "&::before": {
+              content: '""',
+              position: "absolute",
+              top: "0",
+              left: "-100%",
+              width: "100%",
+              height: "100%",
+              background: "linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.2), transparent)",
+              transition: "left 0.6s ease",
+              zIndex: 0,
+            },
+
+            "&:hover": {
+              backgroundColor: "#e7f5ff !important",
+              borderColor: "#74c0fc !important",
+              transform: "translateY(-3px) scale(1.05) !important",
+              boxShadow: "0 8px 16px rgba(34, 139, 230, 0.15), 0 4px 8px rgba(0, 0, 0, 0.08) !important",
+              color: "#1971c2 !important",
+            },
+
+            "&:hover::before": {
+              left: "100%",
+            },
+
+            "&:active": {
+              transform: "translateY(-1px) scale(0.97) !important",
+              transition: "all 0.1s ease !important",
+            },
+
+            "&[data-active]": {
+              backgroundColor: "#228be6 !important",
+              color: "#ffffff !important",
+              fontWeight: "600 !important",
+              borderColor: "#1c7ed6 !important",
+              boxShadow:
+                "0 8px 24px rgba(34, 139, 230, 0.4), 0 4px 12px rgba(34, 139, 230, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important",
+              transform: "translateY(-2px) scale(1.02) !important",
+            },
+
+            "&[data-active]::before": {
+              background: "linear-gradient(135deg, transparent, rgba(255, 255, 255, 0.3), transparent)",
+            },
+
+            "&[data-active]:hover": {
+              backgroundColor: "#1971c2 !important",
+              borderColor: "#1864ab !important",
+              transform: "translateY(-4px) scale(1.05) !important",
+              boxShadow:
+                "0 12px 32px rgba(34, 139, 230, 0.5), 0 6px 16px rgba(34, 139, 230, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important",
+            },
+
+            "&[data-active]:hover::before": {
+              left: "100%",
+            },
+          },
+        }}
+      >
+        <Paper
+          p="sm"
+          radius="lg"
+          bg="white"
+          style={{
+            border: "1px solid var(--mantine-color-gray-2)",
+            boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)",
+          }}
+        >
+          <Tabs.List>
+            {quickActions.map((action) => {
+              const Icon = action.icon;
+              return (
+                <Tabs.Tab key={action.value} value={action.value} leftSection={<Icon size={16} />}>
+                  {action.label}
+                </Tabs.Tab>
+              );
+            })}
+          </Tabs.List>
+        </Paper>
+
+        {/* Overview Tab */}
+        <Tabs.Panel value="overview" pt="xl">
+          <Stack gap="xl">
+            {/* KPI Cards */}
+            <Stack gap="md">
+              <Title order={3}>Key Metrics</Title>
+              {loadingOverview ? (
+                <SimpleGrid cols={{ base: 1, xs: 2, lg: 4 }} spacing="md">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <Card key={i} p="xl" radius="lg" style={{ height: "100%", minHeight: 180 }}>
+                      <Stack gap="sm">
+                        <Skeleton height={14} width="40%" />
+                        <Skeleton height={36} width="70%" />
+                        <Skeleton height={12} width="50%" />
+                        <Skeleton height={8} width="100%" />
+                      </Stack>
+                    </Card>
+                  ))}
+                </SimpleGrid>
+              ) : (
+                <SimpleGrid cols={{ base: 1, xs: 2, lg: 4 }} spacing="md">
                   {cards.map((card) => {
                     const CardIcon = card.icon;
                     return (
                       <Card
                         key={card.label}
-                        withBorder
-                        shadow="md"
-                        radius="xl"
-                        bg="white"
-                        p="lg"
+                        p="xl"
+                        radius="lg"
                         style={{
+                          background: `linear-gradient(135deg, var(--mantine-color-${card.color}-6) 0%, var(--mantine-color-${card.color}-8) 100%)`,
+                          border: "none",
+                          height: "100%",
                           position: "relative",
                           overflow: "hidden",
-                          height: "100%",
-                          display: "flex",
-                          flexDirection: "column",
+                          boxShadow: `0 4px 20px var(--mantine-color-${card.color}-2)`,
                         }}
                       >
-                        {/* Background Decoration */}
-                        <Box
+                        <div
                           style={{
                             position: "absolute",
-                            top: 0,
-                            right: 0,
+                            top: "-25px",
+                            right: "-25px",
+                            width: "100px",
+                            height: "100px",
+                            borderRadius: "50%",
+                            background: "rgba(255, 255, 255, 0.1)",
+                            backdropFilter: "blur(10px)",
+                          }}
+                        />
+                        <div
+                          style={{
+                            position: "absolute",
+                            bottom: "-40px",
+                            left: "-40px",
                             width: "120px",
                             height: "120px",
-                            background: card.gradient,
-                            opacity: 0.1,
                             borderRadius: "50%",
-                            transform: "translate(30%, -30%)",
-                            pointerEvents: "none",
+                            background: "rgba(255, 255, 255, 0.05)",
+                            backdropFilter: "blur(10px)",
                           }}
                         />
 
-                        {/* Content */}
-                        <Box style={{ position: "relative", display: "flex", flexDirection: "column", height: "100%" }}>
-                          {/* Row 1: Icon (Fixed at top right) */}
-                          <Group justify="flex-end" mb="sm">
-                            <ThemeIcon
-                              size={44}
-                              radius="xl"
-                              variant="gradient"
-                              gradient={{ from: `${card.color}.5`, to: `${card.color}.7`, deg: 135 }}
+                        <Stack gap="md" style={{ height: "100%", position: "relative", zIndex: 1 }}>
+                          <Group justify="space-between" align="flex-start">
+                            <div
+                              style={{
+                                padding: "11px",
+                                borderRadius: "var(--mantine-radius-lg)",
+                                background: "rgba(255, 255, 255, 0.2)",
+                                backdropFilter: "blur(10px)",
+                                border: "1px solid rgba(255, 255, 255, 0.3)",
+                              }}
                             >
-                              <CardIcon size={24} />
-                            </ThemeIcon>
+                              <CardIcon size={24} style={{ color: "white" }} />
+                            </div>
+                            <div
+                              style={{
+                                padding: "4px 9px",
+                                borderRadius: "var(--mantine-radius-lg)",
+                                background: "rgba(255, 255, 255, 0.2)",
+                                backdropFilter: "blur(10px)",
+                                border: "1px solid rgba(255, 255, 255, 0.3)",
+                              }}
+                            >
+                              <Text size="xs" fw={600} c="white" style={{ opacity: 0.9, fontSize: "0.7rem" }}>
+                                LIVE
+                              </Text>
+                            </div>
                           </Group>
 
-                          {/* Row 2: Label */}
-                          <Text size="xs" tt="uppercase" fw={700} c="gray.6" lts={2} mb="md">
-                            {card.label}
-                          </Text>
+                          <div>
+                            <Text
+                              size="sm"
+                              fw={700}
+                              c="white"
+                              tt="uppercase"
+                              style={{
+                                opacity: 0.95,
+                                letterSpacing: "1.5px",
+                                fontSize: "0.85rem",
+                                marginBottom: "16px",
+                                textShadow: "0 2px 8px rgba(0, 0, 0, 0.2)",
+                              }}
+                            >
+                              {card.label}
+                            </Text>
 
-                          {/* Row 3: Value */}
-                          <Title order={2} mb={4} style={{ fontSize: "2.25rem", fontWeight: 800, lineHeight: 1 }}>
-                            {card.value}
-                          </Title>
+                            <Title
+                              order={1}
+                              fw={900}
+                              c="white"
+                              style={{
+                                fontSize: "2.75rem",
+                                lineHeight: 1.1,
+                                textShadow: "0 4px 20px rgba(0, 0, 0, 0.3)",
+                                marginBottom: "8px",
+                                letterSpacing: "-0.02em",
+                              }}
+                            >
+                              {card.value}
+                            </Title>
 
-                          {/* Row 4: Subtitle */}
-                          <Text size="sm" c="gray.6" fw={500} mb="lg">
-                            {card.subtitle}
-                          </Text>
+                            <Text size="sm" c="white" style={{ opacity: 0.85, fontSize: "0.875rem" }}>
+                              {card.subtitle}
+                            </Text>
+                          </div>
 
-                          {/* Row 5: Progress Bar (if exists) */}
                           {card.progress !== undefined && (
-                            <Box mb="xs">
+                            <div style={{ marginTop: "auto" }}>
+                              <Group justify="space-between" mb={7}>
+                                <Text size="xs" c="white" fw={500} style={{ opacity: 0.9, fontSize: "0.7rem" }}>
+                                  Progress
+                                </Text>
+                                <Text size="sm" fw={700} c="white">
+                                  {card.progress.toFixed(0)}%
+                                </Text>
+                              </Group>
                               <Progress
-                                value={card.progress * 100}
+                                value={card.progress}
                                 size="md"
-                                radius="xl"
-                                color={card.progress > 0.9 ? "green" : card.progress > 0.7 ? "yellow" : "red"}
+                                radius="lg"
                                 styles={{
-                                  root: { backgroundColor: "var(--mantine-color-gray-1)" },
+                                  root: {
+                                    backgroundColor: "rgba(255, 255, 255, 0.2)",
+                                    border: "1px solid rgba(255, 255, 255, 0.3)",
+                                  },
+                                  section: {
+                                    background: "linear-gradient(90deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 1))",
+                                  },
                                 }}
                               />
-                            </Box>
+                            </div>
                           )}
 
-                          {/* Row 6: Badge (Fixed at bottom) */}
-                          <Box style={{ marginTop: "auto" }}>
-                            {card.trend && (
-                              <Badge
-                                size="sm"
-                                variant="light"
-                                radius="md"
-                                color={
-                                  card.trend.includes("Excellent") || card.trend.includes("Healthy")
-                                    ? "green"
-                                    : card.trend.includes("Needs")
-                                      ? "red"
-                                      : "brand"
-                                }
-                                styles={{
-                                  root: { fontWeight: 600 },
-                                }}
-                              >
-                                {card.trend}
-                              </Badge>
-                            )}
-                          </Box>
-                        </Box>
+                          <Group gap="xs" align="center" style={{ marginTop: card.progress === undefined ? "auto" : undefined }}>
+                            <div
+                              style={{
+                                padding: "5px 12px",
+                                borderRadius: "var(--mantine-radius-lg)",
+                                background: "rgba(255, 255, 255, 0.95)",
+                                boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
+                              }}
+                            >
+                              <Text size="sm" fw={700} c={`${card.color}.8`}>
+                                {card.change}
+                              </Text>
+                            </div>
+                            <Text size="xs" c="white" fw={500} style={{ opacity: 0.9, fontSize: "0.7rem" }}>
+                              {card.changeLabel}
+                            </Text>
+                          </Group>
+                        </Stack>
                       </Card>
                     );
                   })}
                 </SimpleGrid>
+              )}
+            </Stack>
 
-                {/* Daily Briefing */}
-                <Stack gap={8}>
-                  <Group gap="xs">
-                    <Box
-                      style={{
-                        width: 4,
-                        height: 20,
-                        background: "linear-gradient(180deg, #4facfe 0%, #00f2fe 100%)",
-                        borderRadius: 4,
-                      }}
-                    />
-                    <Title order={3}>Daily Briefing</Title>
-                  </Group>
-                  <Text size="sm" c="gray.6" ml={16}>
-                    AI-powered insights and recommendations for your business
-                  </Text>
-                </Stack>
+            {/* Daily Briefing */}
+            <Stack gap="md">
+              <Stack gap="xs">
+                <Title order={3}>Daily Briefing</Title>
+                <Text size="sm" c="dimmed">
+                  AI-powered insights and recommendations
+                </Text>
+              </Stack>
+              {orgId ? (
                 <DailyBriefingCard orgId={orgId} />
+              ) : (
+                <Card withBorder shadow="sm" radius="lg" bg="white">
+                  <Stack gap="sm" py="md">
+                    <Skeleton height={14} width="30%" />
+                    <Skeleton height={10} width="90%" />
+                    <Skeleton height={10} width="85%" />
+                    <Skeleton height={10} width="80%" />
+                  </Stack>
+                </Card>
+              )}
+            </Stack>
 
-                {/* Analytics */}
-                <Stack gap={8}>
-                  <Group gap="xs">
-                    <Box
-                      style={{
-                        width: 4,
-                        height: 20,
-                        background: "linear-gradient(180deg, #43e97b 0%, #38f9d7 100%)",
-                        borderRadius: 4,
-                      }}
-                    />
-                    <Title order={3}>Analytics & Trends</Title>
-                  </Group>
-                  <Text size="sm" c="gray.6" ml={16}>
-                    Visual insights into your business performance
-                  </Text>
-                </Stack>
-                <SimpleGrid cols={{ base: 1, md: 2 }} style={{ minWidth: 0 }}>
+            {/* Analytics */}
+            <Stack gap="md">
+              <Stack gap="xs">
+                <Title order={3}>Analytics</Title>
+                <Text size="sm" c="dimmed">
+                  Sales trends and product performance
+                </Text>
+              </Stack>
+              {orgId ? (
+                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
                   <SalesTrendChart orgId={orgId} />
                   <ProductPerformanceChart orgId={orgId} />
                 </SimpleGrid>
+              ) : (
+                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+                  <Card radius="lg" withBorder>
+                    <Skeleton height={280} />
+                  </Card>
+                  <Card radius="lg" withBorder>
+                    <Skeleton height={400} />
+                  </Card>
+                </SimpleGrid>
+              )}
+            </Stack>
 
-                {/* Low stock */}
-                <Stack gap="md">
-                  <Group justify="space-between" align="flex-end">
+            {/* Low stock */}
+            <Stack gap="md">
+              <Group justify="space-between" align="center">
+                <Stack gap="xs">
+                  <Title order={3}>Low Stock Alerts</Title>
+                  <Text size="sm" c="dimmed">
+                    Items below threshold of 5 units
+                  </Text>
+                </Stack>
+                {!loadingOverview && lowStock && lowStock.length > 0 && (
+                  <Badge size="lg" variant="filled" color="red" radius="lg">
+                    {lowStock.length} {lowStock.length === 1 ? "alert" : "alerts"}
+                  </Badge>
+                )}
+              </Group>
+              {loadingOverview ? (
+                <Paper
+                  radius="lg"
+                  bg="white"
+                  style={{
+                    border: "1px solid var(--mantine-color-gray-2)",
+                    padding: 16,
+                  }}
+                >
+                  <Stack gap="sm">
+                    <Skeleton height={16} />
+                    <Skeleton height={16} />
+                    <Skeleton height={16} />
+                    <Skeleton height={16} />
+                  </Stack>
+                </Paper>
+              ) : lowStock && lowStock.length === 0 ? (
+                <Paper
+                  p="xl"
+                  radius="lg"
+                  bg="teal.0"
+                  style={{
+                    border: "1px solid var(--mantine-color-teal-2)",
+                  }}
+                >
+                  <Group>
+                    <ThemeIcon size={48} radius="lg" color="teal" variant="light">
+                      <IconPackage size={24} />
+                    </ThemeIcon>
                     <Stack gap={4}>
-                      <Group gap="xs">
-                        <Box
-                          style={{
-                            width: 4,
-                            height: 20,
-                            background: "linear-gradient(180deg, #ff6b6b 0%, #ee5a6f 100%)",
-                            borderRadius: 4,
-                          }}
-                        />
-                        <Title order={3}>Low Stock Alerts</Title>
-                      </Group>
-                      <Text size="sm" c="gray.6">
-                        Items below threshold of 5 units
+                      <Text size="md" fw={700}>
+                        All inventory healthy!
+                      </Text>
+                      <Text size="sm" c="dimmed">
+                        No low stock items right now. Great job maintaining inventory levels.
                       </Text>
                     </Stack>
-                    {lowStock && lowStock.length > 0 && (
-                      <Badge size="lg" variant="filled" color="red" radius="md">
-                        {lowStock.length} {lowStock.length === 1 ? "alert" : "alerts"}
-                      </Badge>
-                    )}
                   </Group>
-                  {lowStock && lowStock.length === 0 ? (
-                    <Paper
-                      withBorder
-                      radius="xl"
-                      p="xl"
-                      bg="white"
-                      shadow="md"
-                      style={{
-                        background: "linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)",
-                        border: "none",
-                      }}
-                    >
-                      <Group>
-                        <ThemeIcon size={48} radius="xl" color="teal" variant="white">
-                          <IconPackage size={24} />
-                        </ThemeIcon>
-                        <Stack gap={4}>
-                          <Text size="lg" fw={700} c="gray.9">
-                            All inventory healthy!
+                </Paper>
+              ) : (
+                <Paper
+                  radius="lg"
+                  bg="white"
+                  style={{
+                    border: "1px solid var(--mantine-color-gray-2)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <Table highlightOnHover verticalSpacing="sm" horizontalSpacing="md">
+                    <Table.Thead style={{ backgroundColor: "var(--mantine-color-gray-0)" }}>
+                      <Table.Tr>
+                        <Table.Th>
+                          <Text fw={600} size="sm">
+                            Product
                           </Text>
-                          <Text size="sm" c="gray.8">
-                            No low stock items right now. Great job maintaining inventory levels.
+                        </Table.Th>
+                        <Table.Th>
+                          <Text fw={600} size="sm">
+                            SKU
                           </Text>
-                        </Stack>
-                      </Group>
-                    </Paper>
-                  ) : (
-                    <Paper withBorder radius="xl" bg="white" shadow="md" style={{ overflow: "hidden" }}>
-                      <Table
-                        highlightOnHover
-                        verticalSpacing="md"
-                        horizontalSpacing="lg"
-                        styles={{
-                          thead: {
-                            backgroundColor: "var(--mantine-color-gray-0)",
-                          },
-                        }}
-                      >
-                        <Table.Thead>
-                          <Table.Tr>
-                            <Table.Th>
-                              <Text fw={700} size="sm" c="gray.7">
-                                Product
-                              </Text>
-                            </Table.Th>
-                            <Table.Th>
-                              <Text fw={700} size="sm" c="gray.7">
-                                SKU
-                              </Text>
-                            </Table.Th>
-                            <Table.Th>
-                              <Text fw={700} size="sm" c="gray.7">
-                                Stock
-                              </Text>
-                            </Table.Th>
-                            <Table.Th>
-                              <Text fw={700} size="sm" c="gray.7">
-                                Bin Location
-                              </Text>
-                            </Table.Th>
-                          </Table.Tr>
-                        </Table.Thead>
-                        <Table.Tbody>
-                          {lowStock?.map((product: any) => (
-                            <Table.Tr key={product._id} style={{ transition: "background-color 0.2s ease" }}>
-                              <Table.Td>
-                                <Group gap="sm">
-                                  <ThemeIcon size={36} radius="lg" color="red" variant="light">
-                                    <IconAlertCircle size={18} />
-                                  </ThemeIcon>
-                                  <Stack gap={2}>
-                                    <Text fw={600} size="sm">
-                                      {product.name}
-                                    </Text>
-                                    <Text size="xs" c="gray.6">
-                                      {product.category || "Uncategorized"}
-                                    </Text>
-                                  </Stack>
-                                </Group>
-                              </Table.Td>
-                              <Table.Td>
-                                <Badge variant="light" color="gray" size="md" radius="md">
-                                  {product.sku}
-                                </Badge>
-                              </Table.Td>
-                              <Table.Td>
-                                <Badge
-                                  variant="filled"
-                                  color={product.stockQuantity === 0 ? "red" : "orange"}
-                                  size="lg"
-                                  radius="md"
-                                >
-                                  {product.stockQuantity} units
-                                </Badge>
-                              </Table.Td>
-                              <Table.Td>
-                                <Text size="sm" c="gray.7" fw={500}>
-                                  {product.warehouseLocation || "—"}
+                        </Table.Th>
+                        <Table.Th>
+                          <Text fw={600} size="sm">
+                            Stock
+                          </Text>
+                        </Table.Th>
+                        <Table.Th>
+                          <Text fw={600} size="sm">
+                            Location
+                          </Text>
+                        </Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {lowStock?.map((product: any) => (
+                        <Table.Tr key={product._id}>
+                          <Table.Td>
+                            <Group gap="sm">
+                              <ThemeIcon size={32} radius="lg" color="red" variant="light">
+                                <IconAlertCircle size={16} />
+                              </ThemeIcon>
+                              <div>
+                                <Text fw={500} size="sm">
+                                  {product.name}
                                 </Text>
-                              </Table.Td>
-                            </Table.Tr>
-                          ))}
-                        </Table.Tbody>
-                      </Table>
-                    </Paper>
-                  )}
-                </Stack>
-              </>
-            )}
+                                <Text size="xs" c="dimmed">
+                                  {product.category || "Uncategorized"}
+                                </Text>
+                              </div>
+                            </Group>
+                          </Table.Td>
+                          <Table.Td>
+                            <Badge variant="light" color="gray" size="sm" radius="lg">
+                              {product.sku}
+                            </Badge>
+                          </Table.Td>
+                          <Table.Td>
+                            <Badge variant="filled" color={product.stockQuantity === 0 ? "red" : "orange"} size="sm" radius="lg">
+                              {product.stockQuantity} units
+                            </Badge>
+                          </Table.Td>
+                          <Table.Td>
+                            <Text size="sm" c="dimmed">
+                              {product.warehouseLocation || "—"}
+                            </Text>
+                          </Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                </Paper>
+              )}
+            </Stack>
           </Stack>
-        </Grid.Col>
-      </Grid>
+        </Tabs.Panel>
+
+        {/* Other Tabs */}
+        <Tabs.Panel value="products" pt="lg">
+          <ProductsPage />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="orders" pt="lg">
+          <OrdersPage />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="staff" pt="lg">
+          <StaffManagementPage />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="integrations" pt="lg">
+          <IntegrationsPage />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="analytics" pt="lg">
+          <AnalyticsPage />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="inventory" pt="lg">
+          <InventoryPage />
+        </Tabs.Panel>
+      </Tabs>
     </Stack>
   );
 }

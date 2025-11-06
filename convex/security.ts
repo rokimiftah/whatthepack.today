@@ -3,13 +3,14 @@
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 
+import { internal } from "./_generated/api";
 import { getUserRoles } from "./auth";
 
 /**
  * Require that user has access to specific organization
  * Throws if user's orgId doesn't match requested orgId
  */
-export async function requireOrgAccess(ctx: QueryCtx | MutationCtx, requestedOrgId: Id<"organizations">): Promise<void> {
+export async function requireOrgAccess(ctx: QueryCtx | MutationCtx | any, requestedOrgId: Id<"organizations">): Promise<void> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
     throw new Error("Not authenticated");
@@ -20,7 +21,12 @@ export async function requireOrgAccess(ctx: QueryCtx | MutationCtx, requestedOrg
   const userAuth0OrgId = customClaims["https://whatthepack.today/orgId"];
 
   // Get the requested organization from Convex
-  const org = await ctx.db.get(requestedOrgId);
+  let org: any = null;
+  if (ctx.db?.get) {
+    org = await ctx.db.get(requestedOrgId);
+  } else if (typeof ctx.runQuery === "function") {
+    org = await ctx.runQuery(internal.organizations.get, { orgId: requestedOrgId });
+  }
   if (!org) {
     throw new Error("Organization not found");
   }
@@ -32,12 +38,18 @@ export async function requireOrgAccess(ctx: QueryCtx | MutationCtx, requestedOrg
       return; // owner is allowed
     }
     // Membership check via users table
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_auth0Id", (q) => q.eq("auth0Id", identity.subject))
-      .first();
-    if (user?.orgId && user.orgId === requestedOrgId) {
-      return; // linked to this org
+    if (ctx.db?.query) {
+      const user = await ctx.db
+        .query("users")
+        .withIndex("by_auth0Id", (q: any) => q.eq("auth0Id", identity.subject))
+        .first();
+      if (user?.orgId && user.orgId === requestedOrgId) {
+        return; // linked to this org
+      }
+    } else if (typeof ctx.runQuery === "function") {
+      const usersInOrg = await ctx.runQuery(internal.users.listByOrg, { orgId: requestedOrgId });
+      const isMember = Array.isArray(usersInOrg) && usersInOrg.some((u: any) => u.auth0Id === identity.subject);
+      if (isMember) return;
     }
     throw new Error("Access denied. No organization found in token. Please re-login.");
   }
@@ -62,7 +74,7 @@ export async function requireOrgAccess(ctx: QueryCtx | MutationCtx, requestedOrg
  * Throws if user doesn't have required role
  */
 export async function requireRole(
-  ctx: QueryCtx | MutationCtx,
+  ctx: QueryCtx | MutationCtx | any,
   orgId: Id<"organizations">,
   allowedRoles: string[],
 ): Promise<void> {

@@ -62,7 +62,8 @@ export default function CreateOrderPage() {
     try {
       const result = await extractOrderData({
         chatText: chatLog.trim(),
-      });
+        orgId,
+      } as any);
 
       if (result.success) {
         // Auto-fill form fields from extracted data

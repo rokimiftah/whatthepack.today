@@ -6,7 +6,7 @@ import type { MutationCtx } from "./_generated/server";
 import { v } from "convex/values";
 
 import { internal } from "./_generated/api";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { getUserRoles, requireRole } from "./auth";
 import { requireOrgAccess } from "./security";
 
@@ -121,6 +121,18 @@ export const list = query({
   },
 });
 
+// Internal: List basic product fields for an org (no pricing), used by server-side agents for matching
+export const listBasicForOrg = internalQuery({
+  args: { orgId: v.id("organizations") },
+  handler: async (ctx, args) => {
+    const products = await ctx.db
+      .query("products")
+      .withIndex("by_orgId", (q) => q.eq("orgId", args.orgId))
+      .collect();
+    return products.map((p) => ({ sku: p.sku, name: p.name }));
+  },
+});
+
 // Get product by ID (role-aware)
 export const get = query({
   args: { productId: v.id("products") },
@@ -212,6 +224,25 @@ export const update = mutation({
     }
 
     await ctx.db.patch(args.productId, updates);
+  },
+});
+
+// Delete product (owner only)
+export const remove = mutation({
+  args: {
+    productId: v.id("products"),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const product = await ctx.db.get(args.productId);
+    if (!product) throw new Error("Product not found");
+
+    await requireRole(ctx, product.orgId, ["owner"]);
+
+    // NOTE: Hard delete. Historical orders retain snapshot fields (sku/name/prices) in order items.
+    await ctx.db.delete(args.productId);
   },
 });
 

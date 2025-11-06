@@ -2,8 +2,22 @@ import type { KeyboardEvent } from "react";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ActionIcon, Badge, Button, Center, Group, Loader, Paper, ScrollArea, Stack, Text, Textarea, Title } from "@mantine/core";
-import { IconSend, IconSparkles } from "@tabler/icons-react";
+import {
+  ActionIcon,
+  Badge,
+  Button,
+  Card,
+  Group,
+  Loader,
+  Paper,
+  ScrollArea,
+  Stack,
+  Text,
+  Textarea,
+  ThemeIcon,
+  Title,
+} from "@mantine/core";
+import { IconBulb, IconChartBar, IconRobot, IconSend, IconSparkles } from "@tabler/icons-react";
 import { useAction, useQuery } from "convex/react";
 
 import { toast } from "@shared/components/Toast";
@@ -135,127 +149,174 @@ export default function AnalyticsPage() {
 
   if (orgResult === undefined) {
     return (
-      <Center h="100vh">
-        <Loader size="xl" type="dots" />
-      </Center>
+      <Stack gap="xl" align="center" justify="center" style={{ minHeight: "60vh" }}>
+        <Loader size="xl" type="dots" color="blue" />
+        <Text size="sm" c="dimmed">
+          Loading analytics...
+        </Text>
+      </Stack>
     );
   }
 
   if (!orgId) {
     return (
-      <Center h="100vh">
-        <Paper withBorder radius="lg" p="xl" bg="white">
-          <Text size="sm" c="gray.6">
+      <Stack gap="xl" align="center" justify="center" style={{ minHeight: "60vh" }}>
+        <Paper withBorder radius="lg" p="xl" bg="white" shadow="sm">
+          <Text size="sm" c="dimmed">
             Organization not found.
           </Text>
         </Paper>
-      </Center>
+      </Stack>
     );
   }
 
   return (
-    <Paper withBorder radius="xl" bg="white" p="lg">
-      <Stack gap="lg">
-        <Group justify="space-between" align="center">
-          <Stack gap={4}>
-            <Text size="xs" tt="uppercase" fw={600} c="gray.6" lts={4}>
-              Analytics
+    <Stack gap="xl">
+      <Paper p="lg" radius="lg" bg="white" style={{ border: "1px solid var(--mantine-color-gray-2)" }}>
+        <Group gap="md">
+          <ThemeIcon size={48} radius="lg" variant="light" color="blue">
+            <IconChartBar size={28} />
+          </ThemeIcon>
+          <Stack gap={4} style={{ flex: 1 }}>
+            <Title order={2} fw={700}>
+              AI Business Analyst
+            </Title>
+            <Text size="sm" c="dimmed">
+              Get instant insights and analytics from your business data
             </Text>
-            <Group gap="sm">
-              <IconSparkles size={18} color="#5f84f0" />
-              <Title order={3}>Business analyst AI</Title>
-            </Group>
           </Stack>
-          <Badge variant="light" color="brand">
-            Secure insights
+          <Badge variant="light" color="blue" size="lg" radius="lg" leftSection={<IconSparkles size={14} />}>
+            AI-Powered
           </Badge>
         </Group>
+      </Paper>
 
-        <ScrollArea type="auto" h="60vh" viewportRef={chatViewportRef}>
-          <Stack gap="md">
-            {messages.map((message) => {
-              const isUser = message.role === "user";
-              return (
-                <Group key={message.id} justify={isUser ? "flex-end" : "flex-start"}>
-                  <Paper bg={isUser ? "brand.0" : "white"} withBorder radius="lg" shadow="xs" maw="75%" p="md">
-                    <Group gap="xs" align="center">
-                      {!isUser && <IconSparkles size={16} color="#5f84f0" />}
-                      <Text size="xs" fw={600} c="gray.6" tt="uppercase" lts={2}>
-                        {isUser ? "You" : "AI analyst"}
+      <Card withBorder shadow="sm" radius="lg" bg="white" p="xl">
+        <Stack gap="lg">
+          <ScrollArea type="auto" h="60vh" viewportRef={chatViewportRef}>
+            <Stack gap="lg">
+              {messages.map((message) => {
+                const isUser = message.role === "user";
+                return (
+                  <Group key={message.id} justify={isUser ? "flex-end" : "flex-start"} align="flex-start">
+                    {!isUser && (
+                      <ThemeIcon size="lg" radius="lg" variant="light" color="blue">
+                        <IconRobot size={20} />
+                      </ThemeIcon>
+                    )}
+                    <Paper
+                      bg={isUser ? "blue.0" : "gray.0"}
+                      withBorder
+                      radius="lg"
+                      shadow="sm"
+                      maw="75%"
+                      p="lg"
+                      style={{
+                        border: isUser ? "1px solid var(--mantine-color-blue-2)" : "1px solid var(--mantine-color-gray-2)",
+                      }}
+                    >
+                      <Group gap="xs" align="center" mb="xs">
+                        {!isUser && <IconSparkles size={16} color="var(--mantine-color-blue-6)" />}
+                        <Text size="xs" fw={700} c={isUser ? "blue.7" : "dimmed"} tt="uppercase">
+                          {isUser ? "You" : "AI Analyst"}
+                        </Text>
+                      </Group>
+                      <Text size="sm" lh={1.6} c="gray.8" style={{ whiteSpace: "pre-wrap" }}>
+                        {message.content}
+                      </Text>
+                    </Paper>
+                  </Group>
+                );
+              })}
+
+              {analyzing && (
+                <Group justify="flex-start" align="flex-start">
+                  <ThemeIcon size="lg" radius="lg" variant="light" color="blue">
+                    <IconRobot size={20} />
+                  </ThemeIcon>
+                  <Paper withBorder radius="lg" shadow="sm" p="lg" maw="60%" bg="gray.0">
+                    <Group gap="md" align="center">
+                      <Loader size="sm" color="blue" />
+                      <Text size="sm" c="dimmed" fw={500}>
+                        Analyzing your business data…
                       </Text>
                     </Group>
-                    <Text mt={6} size="sm" lh={1.6} c="gray.8" style={{ whiteSpace: "pre-wrap" }}>
-                      {message.content}
-                    </Text>
                   </Paper>
                 </Group>
-              );
-            })}
+              )}
 
-            {analyzing && (
-              <Group justify="flex-start">
-                <Paper withBorder radius="lg" shadow="xs" p="md" maw="60%" bg="white">
-                  <Group gap="sm" align="center">
-                    <Loader size="sm" />
-                    <Text size="sm" c="gray.6">
-                      Analyzing your business data…
-                    </Text>
-                  </Group>
-                </Paper>
-              </Group>
-            )}
-
-            {messages.filter((message) => message.role === "user").length === 0 && (
-              <Paper withBorder radius="lg" shadow="xs" p="lg" bg="white">
-                <Stack gap="sm">
-                  <Text size="sm" fw={600} c="gray.7">
-                    Try asking:
-                  </Text>
-                  <Stack gap="xs">
-                    {suggestions.map((suggestion) => (
-                      <Button
-                        key={suggestion}
-                        variant="subtle"
-                        justify="space-between"
-                        onClick={() => handleSuggestionClick(suggestion)}
-                      >
-                        {suggestion}
-                      </Button>
-                    ))}
+              {messages.filter((message) => message.role === "user").length === 0 && (
+                <Paper
+                  withBorder
+                  radius="lg"
+                  shadow="sm"
+                  p="xl"
+                  bg="blue.0"
+                  style={{ border: "1px solid var(--mantine-color-blue-2)" }}
+                >
+                  <Stack gap="md">
+                    <Group gap="xs">
+                      <ThemeIcon size="sm" radius="lg" color="blue" variant="light">
+                        <IconBulb size={16} />
+                      </ThemeIcon>
+                      <Text size="sm" fw={700} c="blue.8">
+                        Suggested Questions
+                      </Text>
+                    </Group>
+                    <Stack gap="xs">
+                      {suggestions.map((suggestion) => (
+                        <Button
+                          key={suggestion}
+                          variant="light"
+                          color="blue"
+                          justify="flex-start"
+                          fullWidth
+                          radius="lg"
+                          size="md"
+                          leftSection={<IconSparkles size={16} />}
+                          onClick={() => handleSuggestionClick(suggestion)}
+                          styles={{
+                            label: { fontWeight: 500 },
+                          }}
+                        >
+                          {suggestion}
+                        </Button>
+                      ))}
+                    </Stack>
                   </Stack>
-                </Stack>
-              </Paper>
-            )}
-          </Stack>
-        </ScrollArea>
+                </Paper>
+              )}
+            </Stack>
+          </ScrollArea>
 
-        <Paper withBorder radius="lg" shadow="md" p="lg" bg="white">
-          <Stack gap="sm">
-            <Textarea
-              value={input}
-              onChange={(event) => setInput(event.currentTarget.value)}
-              onKeyDown={handleKeyPress}
-              placeholder="Ask me about your business… e.g. “Show me sales trends”"
-              minRows={3}
-              radius="md"
-            />
-            <Group justify="space-between" align="center">
-              <Text size="xs" c="gray.5">
-                Press Enter to send, Shift + Enter for a new line
-              </Text>
-              <ActionIcon
-                size="lg"
-                variant="filled"
-                color="brand"
-                onClick={handleSendMessage}
-                disabled={analyzing || !input.trim()}
-              >
-                {analyzing ? <Loader size="sm" color="white" /> : <IconSend size={18} />}
-              </ActionIcon>
-            </Group>
-          </Stack>
-        </Paper>
-      </Stack>
-    </Paper>
+          <Paper withBorder radius="lg" shadow="md" p="lg" bg="white">
+            <Stack gap="sm">
+              <Textarea
+                value={input}
+                onChange={(event) => setInput(event.currentTarget.value)}
+                onKeyDown={handleKeyPress}
+                placeholder="Ask me about your business… e.g. “Show me sales trends”"
+                minRows={3}
+                radius="md"
+              />
+              <Group justify="space-between" align="center">
+                <Text size="xs" c="gray.5">
+                  Press Enter to send, Shift + Enter for a new line
+                </Text>
+                <ActionIcon
+                  size="lg"
+                  variant="filled"
+                  color="brand"
+                  onClick={handleSendMessage}
+                  disabled={analyzing || !input.trim()}
+                >
+                  {analyzing ? <Loader size="sm" color="white" /> : <IconSend size={18} />}
+                </ActionIcon>
+              </Group>
+            </Stack>
+          </Paper>
+        </Stack>
+      </Card>
+    </Stack>
   );
 }
