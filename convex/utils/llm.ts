@@ -13,6 +13,8 @@ export interface ChatParams {
   temperature?: number;
   top_p?: number;
   max_tokens?: number;
+  // Optional per-call timeout override (ms)
+  timeoutMs?: number;
 }
 
 export interface ChatResult {
@@ -41,7 +43,8 @@ export async function chatCompletion(params: ChatParams): Promise<ChatResult> {
   if (typeof params.top_p === "number") body.top_p = params.top_p;
   if (typeof params.max_tokens === "number") body.max_tokens = params.max_tokens;
 
-  const timeoutMs = Number(process.env.LLM_TIMEOUT_MS || 4000);
+  // Use a more realistic default timeout; allow per-call override and env override
+  const timeoutMs = Number(params.timeoutMs ?? process.env.LLM_TIMEOUT_MS ?? 15000);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), Math.max(1000, timeoutMs));
   let res: Response;

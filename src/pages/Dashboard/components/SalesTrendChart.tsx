@@ -1,8 +1,9 @@
 import type { Id } from "../../../../convex/_generated/dataModel";
+
 import React from "react";
 
-import { Badge, Button, Card, Group, Skeleton, Stack, Text, ThemeIcon, Title } from "@mantine/core";
 import { BarChart } from "@mantine/charts";
+import { Badge, Button, Card, Group, Skeleton, Stack, Text, ThemeIcon, Title } from "@mantine/core";
 import { IconTrendingUp } from "@tabler/icons-react";
 import { useQuery } from "convex/react";
 
@@ -39,7 +40,6 @@ export default function SalesTrendChart({ orgId }: SalesTrendChartProps) {
     startDate: range.startDate,
     endDate: range.endDate,
   });
-
 
   if (trends === undefined && !timedOut) {
     return (
@@ -127,11 +127,15 @@ export default function SalesTrendChart({ orgId }: SalesTrendChartProps) {
           )}
           <Stack gap={12}>
             <div>
-              <Text size="xs" c="dimmed" mb={6}>Avg order value (AOV)</Text>
+              <Text size="xs" c="dimmed" mb={6}>
+                Avg order value (AOV)
+              </Text>
               <BarChart h={140} data={chartData} dataKey="date" series={[{ name: "aov", color: "blue.6" }]} />
             </div>
             <div>
-              <Text size="xs" c="dimmed" mb={6}>Profit margin (%)</Text>
+              <Text size="xs" c="dimmed" mb={6}>
+                Profit margin (%)
+              </Text>
               <BarChart h={140} data={chartData} dataKey="date" series={[{ name: "margin", color: "teal.6" }]} />
             </div>
           </Stack>
