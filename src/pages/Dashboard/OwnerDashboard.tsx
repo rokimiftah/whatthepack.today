@@ -33,7 +33,7 @@ import {
   IconUser,
   IconUsers,
 } from "@tabler/icons-react";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 
 import AnalyticsPage from "@pages/Analytics";
 import IntegrationsPage from "@pages/Integrations";
@@ -68,11 +68,10 @@ export default function OwnerDashboard() {
   const [_refreshKey, setRefreshKey] = useState(0);
   const [lastUpdated, setLastUpdated] = useState<string>(new Date().toLocaleTimeString());
   const [view, setView] = useState<OwnerView>("overview");
-  const [showNotificationBadge, setShowNotificationBadge] = useState(() => {
-    // Initialize from localStorage
-    const stored = localStorage.getItem("notificationBadgeRead");
-    return stored !== "true";
-  });
+  // Persistent notification "seen" state (per user/org)
+  const notifState = useQuery(api.notifications.getState, orgId ? { orgId } : "skip");
+  const markSeen = useMutation(api.notifications.markSeen);
+  const showNotificationBadge = notifState ? !notifState.hasSeen : false;
 
   const kpis = useQuery(api.analytics.getDashboardKPIs, orgId ? { orgId } : "skip");
   const lowStock = useQuery(api.inventory.getLowStock, orgId ? { orgId, threshold: 5 } : "skip");
@@ -88,9 +87,14 @@ export default function OwnerDashboard() {
   }, []);
 
   // Handle notification badge click
-  const handleNotificationClick = () => {
-    setShowNotificationBadge(false);
-    localStorage.setItem("notificationBadgeRead", "true");
+  const handleNotificationClick = async () => {
+    if (!orgId) return;
+    // Optimistic hide; backend persists seen state
+    try {
+      await markSeen({ orgId });
+    } catch (_e) {
+      // no-op; UI will reflect server state on next render
+    }
   };
 
   const summary = kpis?.summary;

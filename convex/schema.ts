@@ -224,6 +224,15 @@ export default defineSchema({
     .index("by_template", ["template"])
     .index("by_sent", ["sentAt"]),
 
+  // In‑app notification state per user (persistent "seen" status)
+  notificationStates: defineTable({
+    orgId: v.id("organizations"),
+    userId: v.id("users"),
+    lastSeenAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_org_user", ["orgId", "userId"]),
+
   // VAPI Session Logs (for debugging voice interactions)
   vapiSessions: defineTable({
     orgId: v.id("organizations"),

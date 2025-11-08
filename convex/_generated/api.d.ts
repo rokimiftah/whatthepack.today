@@ -26,6 +26,7 @@ import type * as invites from "../invites.js";
 import type * as magicLink from "../magicLink.js";
 import type * as mgmt from "../mgmt.js";
 import type * as movements from "../movements.js";
+import type * as notifications from "../notifications.js";
 import type * as onboarding from "../onboarding.js";
 import type * as orders from "../orders.js";
 import type * as organizations from "../organizations.js";
@@ -71,6 +72,7 @@ declare const fullApi: ApiFromModules<{
   magicLink: typeof magicLink;
   mgmt: typeof mgmt;
   movements: typeof movements;
+  notifications: typeof notifications;
   onboarding: typeof onboarding;
   orders: typeof orders;
   organizations: typeof organizations;
