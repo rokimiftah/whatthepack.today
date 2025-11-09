@@ -1,12 +1,60 @@
 // convex/agents/shippingAgent.ts - AI Agent for ShipEngine Label Purchase (Organization Metadata)
-"use node";
-
 import { v } from "convex/values";
-import ShipEngine from "shipengine";
 
 import { api, internal } from "../_generated/api";
 import { internalAction } from "../_generated/server";
-import { getShipEngineApiKey } from "../mgmt";
+
+// Helpers (fetch-based) to avoid Node-only SDKs
+function getManagementDomain(): string {
+  const managementDomain = process.env.AUTH0_TENANT_DOMAIN ?? process.env.AUTH0_DOMAIN;
+  if (!managementDomain) throw new Error("Missing Auth0 domain. Set AUTH0_TENANT_DOMAIN or AUTH0_DOMAIN.");
+  return managementDomain;
+}
+
+function selectAuth0OrgIdForEnv(org: any): string | undefined {
+  const suffix = (process.env.APP_DOMAIN_SUFFIX || "").trim();
+  const isDev = suffix.includes(".dev.") || suffix === ".dev.whatthepack.today";
+  return isDev ? org?.auth0OrgIdDev || org?.auth0OrgId : org?.auth0OrgIdProd || org?.auth0OrgId;
+}
+
+async function getManagementAccessToken(): Promise<string> {
+  const domain = getManagementDomain();
+  const clientId = process.env.AUTH0_MGMT_CLIENT_ID!;
+  const clientSecret = process.env.AUTH0_MGMT_CLIENT_SECRET!;
+  const audience = `https://${domain}/api/v2/`;
+
+  const res = await fetch(`https://${domain}/oauth/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      audience,
+      grant_type: "client_credentials",
+    }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`Auth0 token error (${res.status}): ${json?.error || json?.message || res.statusText}`);
+  const token = (json as any)?.access_token as string | undefined;
+  if (!token) throw new Error("Auth0 token response missing access_token");
+  return token;
+}
+
+async function getShipEngineApiKeyFromAuth0(auth0OrgId: string): Promise<string> {
+  if (!auth0OrgId || !auth0OrgId.startsWith("org_")) {
+    throw new Error("Invalid Auth0 organization id");
+  }
+  const domain = getManagementDomain();
+  const token = await getManagementAccessToken();
+  const res = await fetch(`https://${domain}/api/v2/organizations/${auth0OrgId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const json: any = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(`Auth0 org read error (${res.status}): ${json?.error || json?.message || res.statusText}`);
+  const apiKey = json?.metadata?.shipengine_api_key as string | undefined;
+  if (!apiKey) throw new Error("ShipEngine API key not configured for this organization");
+  return apiKey;
+}
 
 // Buy shipping label using owner's ShipEngine API key from Organization Metadata
 export const buyLabel = internalAction({
@@ -24,73 +72,83 @@ export const buyLabel = internalAction({
       const org = await ctx.runQuery(internal.organizations.get, { orgId: args.orgId });
       if (!org) throw new Error("Organization not found");
 
-      // Get ShipEngine API key from Organization Metadata (encrypted at rest)
-      if (!org.auth0OrgId) {
-        throw new Error("Organization not linked to Auth0 (missing auth0OrgId)");
-      }
-      const shipEngineApiKey = await getShipEngineApiKey(org.auth0OrgId);
+      // Get ShipEngine API key from Auth0 Organization Metadata (encrypted at rest)
+      let auth0OrgId = selectAuth0OrgIdForEnv(org);
+      if (!auth0OrgId) auth0OrgId = org.auth0OrgId; // back-compat
+      if (!auth0OrgId) throw new Error("Organization not linked to Auth0 (missing auth0OrgId)");
+      const shipEngineApiKey = await getShipEngineApiKeyFromAuth0(auth0OrgId);
 
-      // Attempt real label purchase via ShipEngine; fallback to mock on error
+      // Attempt real label purchase via ShipEngine REST; fallback to mock on error
       try {
-        const shipengine = new ShipEngine(shipEngineApiKey);
-
         const ord: any = order as any;
         const weightGrams = ord.weight ?? 300; // default 300g if not provided yet
         const length = 10;
         const width = 10;
         const height = 10;
 
-        const shipment = await shipengine.createLabelFromShipmentDetails({
+        const payload = {
           shipment: {
-            serviceCode: "usps_priority_mail", // TODO: allow dynamic service selection
-            shipTo: {
+            service_code: "usps_priority_mail", // TODO: allow dynamic service selection
+            ship_to: {
               name: ord.recipientName,
               phone: ord.recipientPhone,
-              addressLine1: ord.recipientAddress,
-              cityLocality: ord.recipientCity,
-              stateProvince: ord.recipientProvince,
-              postalCode: ord.recipientPostalCode,
-              countryCode: ord.recipientCountry || "US",
+              address_line1: ord.recipientAddress,
+              city_locality: ord.recipientCity,
+              state_province: ord.recipientProvince,
+              postal_code: ord.recipientPostalCode,
+              country_code: ord.recipientCountry || "US",
             },
-            shipFrom: {
+            ship_from: {
               name: org.name,
-              addressLine1: "123 Business St",
-              cityLocality: "San Francisco",
-              stateProvince: "CA",
-              postalCode: "94102",
-              countryCode: "US",
+              address_line1: "123 Business St",
+              city_locality: "San Francisco",
+              state_province: "CA",
+              postal_code: "94102",
+              country_code: "US",
             },
             packages: [
               {
-                weight: {
-                  value: weightGrams,
-                  unit: "gram",
-                },
-                dimensions: {
-                  length,
-                  width,
-                  height,
-                  unit: "centimeter",
-                },
+                weight: { value: weightGrams, unit: "gram" },
+                dimensions: { length, width, height, unit: "centimeter" },
               },
             ],
-          } as any,
+          },
+        } as const;
+
+        const res = await fetch("https://api.shipengine.com/v1/labels", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "API-Key": shipEngineApiKey,
+          },
+          body: JSON.stringify(payload),
         });
+
+        const json: any = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg = json?.errors?.[0]?.message || json?.message || res.statusText;
+          throw new Error(`ShipEngine label error (${res.status}): ${msg}`);
+        }
+
+        const trackingNumber = json?.tracking_number || json?.trackingNumber;
+        const labelUrl = json?.label_download?.pdf || json?.labelDownload?.pdf;
+        const shippingCost = json?.shipment_cost?.amount || json?.shipmentCost?.amount;
+        const courierService = json?.carrier_code || json?.carrierCode;
 
         await ctx.runMutation(api.orders.updateShipping, {
           orderId: args.orderId,
-          trackingNumber: (shipment as any).trackingNumber ?? (shipment as any).tracking_number,
-          labelUrl: (shipment as any).labelDownload?.pdf ?? (shipment as any).label_download?.pdf,
-          shippingCost: (shipment as any).shipmentCost?.amount ?? (shipment as any).shipment_cost?.amount,
-          courierService: (shipment as any).carrierCode ?? (shipment as any).carrier_code,
+          trackingNumber,
+          labelUrl,
+          shippingCost,
+          courierService,
         });
 
         return {
           success: true,
-          trackingNumber: (shipment as any).trackingNumber ?? (shipment as any).tracking_number,
-          labelUrl: (shipment as any).labelDownload?.pdf ?? (shipment as any).label_download?.pdf,
-          shippingCost: (shipment as any).shipmentCost?.amount ?? (shipment as any).shipment_cost?.amount,
-          courierService: (shipment as any).carrierCode ?? (shipment as any).carrier_code,
+          trackingNumber,
+          labelUrl,
+          shippingCost,
+          courierService,
           mode: shipEngineApiKey.startsWith("TEST_") ? "test" : "live",
           message: "Label purchased successfully",
         };
